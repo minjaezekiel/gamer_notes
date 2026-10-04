@@ -1,0 +1,145 @@
+<!doctype html>
+<!-- ==========================================================================
+     01 - A level is a picture made of digits
+     Lesson 6, Web Games, Beginner
+
+     WHAT THIS SHOWS:  Turning a 2D array into real brick objects with real
+                       positions, using two nested loops.
+     RUN IT:           Double-click. Edit the LEVELS arrays below and reload.
+     CHANGE ME FIRST:  Type different digits into LEVEL_1. You can SEE the level
+                       in the code - that is the entire point of data-driven
+                       design.
+     TRY THIS:         Swap layout[y][x] for layout[x][y] on line 88 and reload.
+                       The level comes out mirrored along the diagonal. This is
+                       the most common bug in a first tile map.
+     ========================================================================== -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>01 - Levels as data</title>
+<style>
+  body { background:#f0f0f0; font-family:system-ui, sans-serif;
+         display:flex; flex-direction:column; align-items:center; padding:24px; }
+  canvas { border:2px solid #888; }
+  p { max-width:640px; }
+  button { font:inherit; padding:8px 16px; margin:4px; }
+</style>
+</head>
+<body>
+
+<h1>01 - Levels as data</h1>
+<canvas id="game" width="640" height="320"></canvas>
+<div>
+  <button id="prev">&larr; previous level</button>
+  <button id="next">next level &rarr;</button>
+</div>
+<p>Three levels, three arrays, <strong>one</strong> piece of code that draws
+them. Adding a fourth level means adding an array and changing nothing else.</p>
+
+<script>
+  const canvas = document.getElementById("game");
+  const ctx = canvas.getContext("2d");
+
+  // =====================================================================
+  // THE LEVELS - this is DATA, not code.
+  //   0 = nothing    1 = normal brick    2 = tough brick (two hits)
+  // You can see the shape of each level just by looking at it.
+  // =====================================================================
+  const LEVELS = [
+    [
+      [1, 1, 1, 1, 1, 1, 1, 1],
+      [1, 1, 1, 1, 1, 1, 1, 1],
+      [1, 1, 1, 1, 1, 1, 1, 1]
+    ],
+    [
+      [2, 2, 2, 2, 2, 2, 2, 2],
+      [1, 1, 0, 1, 1, 0, 1, 1],
+      [1, 0, 0, 1, 1, 0, 0, 1],
+      [1, 1, 0, 1, 1, 0, 1, 1]
+    ],
+    [
+      [0, 0, 1, 1, 1, 1, 0, 0],
+      [0, 1, 2, 1, 1, 2, 1, 0],
+      [1, 2, 1, 1, 1, 1, 2, 1],
+      [0, 1, 1, 0, 0, 1, 1, 0],
+      [0, 0, 1, 1, 1, 1, 0, 0]
+    ]
+  ];
+
+  // Layout constants. Named and gathered at the top so they are easy to find
+  // and change - no magic numbers buried in the middle of a function.
+  const BRICK_W = 68;
+  const BRICK_H = 24;
+  const GAP = 6;
+  const BRICK_LEFT = 32;
+  const BRICK_TOP = 40;
+
+  let levelIndex = 0;
+  let bricks = [];
+
+  // =====================================================================
+  // Turn a grid of digits into objects with positions.
+  // This nested-loop pattern appears in every tile-based game ever made.
+  // =====================================================================
+  function buildLevel(layout) {
+    const result = [];
+
+    // y is the ROW, x is the COLUMN.
+    for (let y = 0; y < layout.length; y++) {
+      for (let x = 0; x < layout[y].length; x++) {
+
+        // layout[y][x] - row FIRST, then column.
+        // The outer array holds rows, so the first index picks which row,
+        // which is y. Writing layout[x][y] gives a level mirrored along the
+        // diagonal, or a crash if the level is not square.
+        const kind = layout[y][x];
+
+        if (kind === 0) { continue; }    // 0 means no brick here
+
+        result.push({
+          x: BRICK_LEFT + x * (BRICK_W + GAP),
+          y: BRICK_TOP  + y * (BRICK_H + GAP),
+          w: BRICK_W,
+          h: BRICK_H,
+          hitsLeft: kind,                // 1 or 2
+          alive: true
+        });
+      }
+    }
+    return result;
+  }
+
+  function loadLevel(index) {
+    // Wrap around, so "next" from the last level goes back to the first.
+    levelIndex = (index + LEVELS.length) % LEVELS.length;
+    bricks = buildLevel(LEVELS[levelIndex]);
+    render();
+  }
+
+  function render() {
+    ctx.fillStyle = "#15181d";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    for (const brick of bricks) {
+      if (!brick.alive) { continue; }
+      // Tough bricks are a different colour, so the player can SEE that they
+      // will take two hits. Without that feedback the game looks broken.
+      ctx.fillStyle = brick.hitsLeft >= 2 ? "#ff9246" : "#4a9eff";
+      ctx.fillRect(brick.x, brick.y, brick.w, brick.h);
+    }
+
+    ctx.fillStyle = "#8b94a0";
+    ctx.font = "15px ui-monospace, Menlo, monospace";
+    ctx.fillText("level " + (levelIndex + 1) + " of " + LEVELS.length
+                 + "   -   " + bricks.length + " bricks built from "
+                 + LEVELS[levelIndex].length + " rows of digits", 20, 300);
+  }
+
+  document.getElementById("next").onclick = () => loadLevel(levelIndex + 1);
+  document.getElementById("prev").onclick = () => loadLevel(levelIndex - 1);
+
+  loadLevel(0);
+</script>
+
+</body>
+</html>

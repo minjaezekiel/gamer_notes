@@ -1,0 +1,397 @@
+<!doctype html>
+<!-- ==========================================================================
+     04 - PONG, COMPLETE  (the finished lesson 5 result)
+     Lesson 5, Web Games, Beginner
+
+     Everything from lessons 1 to 5 in one file:
+       L1  the game loop
+       L2  delta time, velocity, wall bouncing
+       L3  polled input
+       L4  AABB collision and ball steering
+       L5  states, score, and juice
+
+     RUN IT:     Double-click, click the canvas, press SPACE.
+     CONTROLS:   W/S or up/down arrows. P pauses. Esc quits to the menu.
+
+     THE EXPERIMENT:
+       Untick every juice box and play a rally. Then tick them one at a time.
+       The rules of the game never change - the code that decides who wins is
+       identical. Only the feedback changes. Write down which single tick box
+       made the biggest difference.
+     ========================================================================== -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Pong</title>
+<style>
+  body { background:#f0f0f0; font-family:system-ui, sans-serif;
+         display:flex; flex-direction:column; align-items:center; padding:20px; }
+  canvas { border:2px solid #888; }
+  .controls { margin-top:12px; display:flex; flex-wrap:wrap; gap:16px;
+              max-width:640px; font-size:14px; }
+  label { display:inline-flex; align-items:center; gap:6px; }
+  p { max-width:640px; color:#444; }
+</style>
+</head>
+<body>
+
+<h1>Pong</h1>
+<canvas id="game" width="640" height="420"></canvas>
+
+<div class="controls">
+  <strong>Juice:</strong>
+  <label><input type="checkbox" id="jSound" checked> sound</label>
+  <label><input type="checkbox" id="jShake" checked> screen shake</label>
+  <label><input type="checkbox" id="jParticles" checked> particles</label>
+  <label><input type="checkbox" id="jSpeedUp" checked> ball speeds up</label>
+  <label><input type="checkbox" id="jFlash" checked> paddle flash</label>
+</div>
+
+<p>Untick everything, play a rally, then tick them one at a time. The rules never
+change &mdash; only how it feels.</p>
+
+<script>
+  const canvas = document.getElementById("game");
+  const ctx = canvas.getContext("2d");
+  const W = canvas.width;
+  const H = canvas.height;
+
+  // =====================================================================
+  // STATE
+  // =====================================================================
+  let state = "MENU";              // MENU | PLAYING | PAUSED | GAME_OVER
+  let playerScore = 0;
+  let opponentScore = 0;
+  const WINNING_SCORE = 5;
+  let winner = "";
+
+  const ball = { x: W / 2, y: H / 2, radius: 9, speedX: -300, speedY: 130 };
+  const player   = { x: 24,     y: H / 2 - 45, w: 12, h: 90, flash: 0 };
+  const opponent = { x: W - 36, y: H / 2 - 45, w: 12, h: 90, flash: 0 };
+
+  const PADDLE_SPEED = 460;
+  const OPPONENT_SPEED = 300;     // deliberately slower than the ball can move,
+                                  // so the opponent can actually be beaten
+  const STEER_STRENGTH = 340;
+  const BASE_SPEED = 300;
+  const SPEED_UP_PER_HIT = 18;
+
+  const particles = [];
+  const PARTICLE_LIFE = 0.45;
+  let shakeTime = 0, shakeStrength = 0, shakeTotal = 0.12;
+  let lastTime = 0;
+
+  // =====================================================================
+  // INPUT
+  // =====================================================================
+  const keys = {};
+  document.addEventListener("keydown", function (e) {
+    keys[e.key] = true;
+    if (e.key.startsWith("Arrow") || e.key === " ") { e.preventDefault(); }
+
+    // The same key means different things in different states.
+    if (e.key === " ") {
+      if (state === "MENU" || state === "GAME_OVER") { startGame(); }
+    }
+    if (e.key === "p" || e.key === "P") {
+      if (state === "PLAYING") { state = "PAUSED"; }
+      else if (state === "PAUSED") { state = "PLAYING"; }
+    }
+    if (e.key === "Escape") {
+      if (state !== "MENU") { state = "MENU"; }
+    }
+  });
+  document.addEventListener("keyup", function (e) { keys[e.key] = false; });
+
+  // =====================================================================
+  // SOUND  (generated, so there are no files to download)
+  // =====================================================================
+  let audio = null;
+  function beep(frequency, duration) {
+    if (!document.getElementById("jSound").checked) { return; }
+    // Created lazily: browsers block audio until the user has interacted with
+    // the page, and the first beep always follows a key press.
+    if (!audio) { audio = new AudioContext(); }
+
+    const osc = audio.createOscillator();
+    const vol = audio.createGain();
+    osc.frequency.value = frequency;
+    osc.type = "square";
+    // Fade out, or you hear a click as the wave is cut off mid-cycle.
+    vol.gain.setValueAtTime(0.07, audio.currentTime);
+    vol.gain.exponentialRampToValueAtTime(0.0001, audio.currentTime + duration);
+    osc.connect(vol);
+    vol.connect(audio.destination);
+    osc.start();
+    osc.stop(audio.currentTime + duration);
+  }
+
+  // =====================================================================
+  // JUICE
+  // =====================================================================
+  function addShake(strength, duration) {
+    if (!document.getElementById("jShake").checked) { return; }
+    shakeStrength = Math.max(shakeStrength, strength);
+    shakeTime = Math.max(shakeTime, duration);
+    shakeTotal = Math.max(shakeTotal, duration);
+  }
+
+  function spawnParticles(x, y, count, colour) {
+    if (!document.getElementById("jParticles").checked) { return; }
+    for (let i = 0; i < count; i++) {
+      // Pick an ANGLE then convert to x and y, so the spray is a circle rather
+      // than a square. Math.PI * 2 is a full turn, in radians.
+      const angle = Math.random() * Math.PI * 2;
+      const speed = 70 + Math.random() * 200;
+      particles.push({
+        x: x, y: y,
+        speedX: Math.cos(angle) * speed,
+        speedY: Math.sin(angle) * speed,
+        life: PARTICLE_LIFE,
+        colour: colour
+      });
+    }
+  }
+
+  function updateParticles(dt) {
+    // Backwards, because removing an item shifts everything after it down.
+    for (let i = particles.length - 1; i >= 0; i--) {
+      const p = particles[i];
+      p.x += p.speedX * dt;
+      p.y += p.speedY * dt;
+      p.life -= dt;
+      if (p.life <= 0) { particles.splice(i, 1); }
+    }
+  }
+
+  // =====================================================================
+  // GAME LOGIC
+  // =====================================================================
+  function startGame() {
+    playerScore = 0;
+    opponentScore = 0;
+    winner = "";
+    particles.length = 0;
+    resetBall(Math.random() < 0.5 ? 1 : -1);
+    state = "PLAYING";
+  }
+
+  function resetBall(direction) {
+    ball.x = W / 2;
+    ball.y = H / 2;
+    ball.speedX = BASE_SPEED * direction;
+    ball.speedY = (Math.random() * 2 - 1) * 140;
+  }
+
+  function boxesOverlap(a, b) {
+    return a.x < b.x + b.w && a.x + a.w > b.x &&
+           a.y < b.y + b.h && a.y + a.h > b.y;
+  }
+  function ballBox() {
+    return { x: ball.x - ball.radius, y: ball.y - ball.radius,
+             w: ball.radius * 2, h: ball.radius * 2 };
+  }
+  function clampPaddle(p) {
+    if (p.y < 0) { p.y = 0; }
+    if (p.y + p.h > H) { p.y = H - p.h; }
+  }
+
+  function bounceOffPaddle(paddle, direction) {
+    // Position first, velocity second. Skip this and the ball sticks inside
+    // the paddle, flipping every frame, and appears to vibrate.
+    ball.x = (direction > 0) ? paddle.x + paddle.w + ball.radius
+                            : paddle.x - ball.radius;
+
+    let speed = Math.abs(ball.speedX);
+    if (document.getElementById("jSpeedUp").checked) {
+      speed += SPEED_UP_PER_HIT;      // rallies build tension
+    }
+    ball.speedX = speed * direction;
+
+    // Where on the paddle did it hit? -1 top, 0 middle, +1 bottom.
+    // This is not physics. It is better than physics, because it hands the
+    // player control: Pong becomes a game about aiming rather than standing
+    // in the right place.
+    const centre = paddle.y + paddle.h / 2;
+    const hitOffset = (ball.y - centre) / (paddle.h / 2);
+    ball.speedY = hitOffset * STEER_STRENGTH;
+
+    paddle.flash = 0.1;
+    beep(380 + hitOffset * 120, 0.06);
+    addShake(4, 0.08);
+    spawnParticles(ball.x, ball.y, 10, "#ffd43b");
+  }
+
+  function scorePoint(who) {
+    if (who === "player") { playerScore++; } else { opponentScore++; }
+    beep(150, 0.25);
+    addShake(11, 0.22);
+    spawnParticles(ball.x < W / 2 ? 10 : W - 10, ball.y, 26, "#ff6b6b");
+
+    if (playerScore >= WINNING_SCORE || opponentScore >= WINNING_SCORE) {
+      winner = playerScore > opponentScore ? "YOU WIN" : "YOU LOSE";
+      state = "GAME_OVER";
+    } else {
+      resetBall(who === "player" ? -1 : 1);
+    }
+  }
+
+  function update(dt) {
+    // Particles and flashes keep running on the game-over screen, which looks
+    // better - but NOT while paused.
+    if (state !== "PAUSED") {
+      updateParticles(dt);
+      if (shakeTime > 0) { shakeTime -= dt; }
+      if (player.flash > 0) { player.flash -= dt; }
+      if (opponent.flash > 0) { opponent.flash -= dt; }
+    }
+
+    // ONE check, here, rather than "if (!paused)" scattered through every
+    // object. Forget one of those and a single enemy keeps walking while the
+    // game is paused.
+    if (state !== "PLAYING") { return; }
+
+    // --- paddles ---
+    const wantsUp   = keys["ArrowUp"]   || keys["w"] || keys["W"];
+    const wantsDown = keys["ArrowDown"] || keys["s"] || keys["S"];
+    if (wantsUp)   { player.y -= PADDLE_SPEED * dt; }
+    if (wantsDown) { player.y += PADDLE_SPEED * dt; }
+    clampPaddle(player);
+
+    const oppCentre = opponent.y + opponent.h / 2;
+    if (ball.y < oppCentre - 10) { opponent.y -= OPPONENT_SPEED * dt; }
+    if (ball.y > oppCentre + 10) { opponent.y += OPPONENT_SPEED * dt; }
+    clampPaddle(opponent);
+
+    // --- ball ---
+    ball.x += ball.speedX * dt;
+    ball.y += ball.speedY * dt;
+
+    if (ball.y - ball.radius < 0) {
+      ball.y = ball.radius; ball.speedY = -ball.speedY;
+      beep(240, 0.03); spawnParticles(ball.x, ball.y, 4, "#6c8aa8");
+    }
+    if (ball.y + ball.radius > H) {
+      ball.y = H - ball.radius; ball.speedY = -ball.speedY;
+      beep(240, 0.03); spawnParticles(ball.x, ball.y, 4, "#6c8aa8");
+    }
+
+    // The direction check stops the ball being re-caught on the frame after a
+    // hit, while it is still briefly overlapping but already leaving.
+    if (boxesOverlap(ballBox(), player) && ball.speedX < 0) {
+      bounceOffPaddle(player, +1);
+    }
+    if (boxesOverlap(ballBox(), opponent) && ball.speedX > 0) {
+      bounceOffPaddle(opponent, -1);
+    }
+
+    if (ball.x < -40) { scorePoint("opponent"); }
+    if (ball.x > W + 40) { scorePoint("player"); }
+  }
+
+  // =====================================================================
+  // RENDER
+  // =====================================================================
+  function render() {
+    ctx.save();
+
+    if (shakeTime > 0 && shakeTotal > 0) {
+      const fade = shakeTime / shakeTotal;
+      ctx.translate((Math.random() - 0.5) * 2 * shakeStrength * fade,
+                    (Math.random() - 0.5) * 2 * shakeStrength * fade);
+    }
+
+    // Draw the background bigger than the canvas, so the shake never exposes
+    // a blank edge.
+    ctx.fillStyle = "#15181d";
+    ctx.fillRect(-40, -40, W + 80, H + 80);
+
+    if (state === "MENU") {
+      drawCentred("PONG", H / 2 - 30, 52, "#eee");
+      drawCentred("press SPACE to play", H / 2 + 14, 17, "#8b94a0");
+      drawCentred("W / S  or  up and down arrows", H / 2 + 44, 14, "#5d6672");
+    } else {
+      drawPlayfield();
+
+      if (state === "PAUSED") {
+        ctx.fillStyle = "rgba(0,0,0,0.65)";
+        ctx.fillRect(-40, -40, W + 80, H + 80);
+        drawCentred("PAUSED", H / 2 - 8, 40, "#eee");
+        drawCentred("P to carry on", H / 2 + 26, 15, "#8b94a0");
+      }
+      if (state === "GAME_OVER") {
+        ctx.fillStyle = "rgba(0,0,0,0.65)";
+        ctx.fillRect(-40, -40, W + 80, H + 80);
+        drawCentred(winner, H / 2 - 16, 46,
+                    winner === "YOU WIN" ? "#51cf66" : "#ff6b6b");
+        drawCentred(playerScore + " - " + opponentScore, H / 2 + 22, 22, "#eee");
+        drawCentred("SPACE to play again", H / 2 + 56, 15, "#8b94a0");
+      }
+    }
+
+    ctx.restore();   // ALWAYS. Without it the offsets accumulate and the whole
+                     // game slides off the screen within a second.
+  }
+
+  function drawPlayfield() {
+    ctx.strokeStyle = "#2a3039";
+    ctx.lineWidth = 3;
+    ctx.setLineDash([12, 14]);
+    ctx.beginPath();
+    ctx.moveTo(W / 2, 0); ctx.lineTo(W / 2, H);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    ctx.font = "bold 46px ui-monospace, Menlo, monospace";
+    ctx.fillStyle = "#2f3744";
+    ctx.textAlign = "center";
+    ctx.fillText(playerScore, W / 2 - 60, 60);
+    ctx.fillText(opponentScore, W / 2 + 60, 60);
+    ctx.textAlign = "left";
+
+    const flashOn = document.getElementById("jFlash").checked;
+    ctx.fillStyle = (flashOn && player.flash > 0) ? "#ffffff" : "#4a9eff";
+    ctx.fillRect(player.x, player.y, player.w, player.h);
+    ctx.fillStyle = (flashOn && opponent.flash > 0) ? "#ffffff" : "#ff9246";
+    ctx.fillRect(opponent.x, opponent.y, opponent.w, opponent.h);
+
+    for (const p of particles) {
+      ctx.globalAlpha = p.life / PARTICLE_LIFE;   // remaining / total: 1 -> 0
+      ctx.fillStyle = p.colour;
+      ctx.fillRect(p.x - 2, p.y - 2, 4, 4);
+    }
+    ctx.globalAlpha = 1;
+
+    ctx.fillStyle = "#eee";
+    ctx.beginPath();
+    ctx.arc(ball.x, ball.y, ball.radius, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  function drawCentred(text, y, size, colour) {
+    ctx.fillStyle = colour;
+    ctx.font = "bold " + size + "px system-ui, sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText(text, W / 2, y);
+    ctx.textAlign = "left";
+  }
+
+  // =====================================================================
+  // THE LOOP
+  // =====================================================================
+  function frame(currentTime) {
+    if (!lastTime) { lastTime = currentTime; }
+    let dt = (currentTime - lastTime) / 1000;
+    lastTime = currentTime;
+    if (dt > 0.1) { dt = 1 / 60; }
+
+    update(dt);
+    render();
+    requestAnimationFrame(frame);
+  }
+
+  requestAnimationFrame(frame);
+</script>
+
+</body>
+</html>

@@ -1,0 +1,87 @@
+<!doctype html>
+<!-- ==========================================================================
+     04 - The vibrating wall bug
+     Lesson 2, Web Games, Beginner
+
+     This file is DELIBERATELY BROKEN. Run it and watch the ball reach a wall
+     and then shiver against it instead of bouncing away.
+
+     WHY IT HAPPENS:
+       frame 1: ball moves past the wall. We flip speedX. Ball is still outside.
+       frame 2: ball moves inward a little, but is STILL outside the wall,
+                so the test passes again and we flip speedX AGAIN - now it is
+                heading back out.
+       frame 3: ...and so on, forever.
+
+     THE FIX:   put the ball back to a legal position BEFORE flipping the speed.
+                Un-comment the two "ball.x = ..." lines below.
+
+     THE RULE:  when you detect a collision, fix the POSITION first, then change
+                the VELOCITY.
+     ========================================================================== -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>04 - The vibrating wall bug</title>
+<style>
+  body { background:#f0f0f0; font-family:system-ui, sans-serif;
+         display:flex; flex-direction:column; align-items:center; padding:24px; }
+  canvas { border:2px solid #888; }
+  .warn { color:#a00; font-weight:bold; max-width:600px; }
+</style>
+</head>
+<body>
+
+<h1>04 - The vibrating wall bug</h1>
+<canvas id="game" width="600" height="300"></canvas>
+<p class="warn">Broken on purpose. The ball sticks to the wall and shivers.
+Read the comments at the top of this file.</p>
+
+<script>
+  const canvas = document.getElementById("game");
+  const ctx = canvas.getContext("2d");
+
+  const ball = { x: 300, y: 150, radius: 15, speedX: 260, speedY: 0 };
+  let lastTime = 0;
+
+  function update(dt) {
+    ball.x = ball.x + ball.speedX * dt;
+
+    if (ball.x + ball.radius > canvas.width) {
+      // ball.x = canvas.width - ball.radius;      <-- the missing fix
+      ball.speedX = -ball.speedX;
+    }
+    if (ball.x - ball.radius < 0) {
+      // ball.x = ball.radius;                     <-- the missing fix
+      ball.speedX = -ball.speedX;
+    }
+  }
+
+  function render() {
+    ctx.fillStyle = "#222";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = "#ff6b6b";
+    ctx.beginPath();
+    ctx.arc(ball.x, ball.y, ball.radius, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = "#ddd";
+    ctx.font = "14px ui-monospace, Menlo, monospace";
+    ctx.fillText("ball.x  = " + ball.x.toFixed(1), 20, 240);
+    ctx.fillText("speedX  = " + ball.speedX.toFixed(0), 20, 262);
+  }
+
+  function frame(currentTime) {
+    if (!lastTime) { lastTime = currentTime; }
+    let dt = (currentTime - lastTime) / 1000;
+    lastTime = currentTime;
+    if (dt > 0.1) { dt = 1 / 60; }
+    update(dt);
+    render();
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+</script>
+
+</body>
+</html>

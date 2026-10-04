@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{TITLE}}</title>
+<meta name="description" content="CHANGE ME: one sentence saying what this explainer shows.">
+<link rel="stylesheet" href="{{SHARED}}/css/notes.css">
+<link rel="stylesheet" href="{{SHARED}}/css/code.css">
+</head>
+<body>
+<div class="wrap">
+
+  <p class="breadcrumb"><a href="notes.md">&larr; Back to the lesson notes</a></p>
+
+  <header class="lesson-head">
+    <p class="kicker">{{TRACK_LABEL}} &middot; Lesson {{NUM}}</p>
+    <h1>{{TITLE}}</h1>
+    <p class="meta">CHANGE ME: what this explainer is for.</p>
+  </header>
+
+  <div class="look-for">
+    <strong>What to look for</strong>
+    CHANGE ME. Tell the student exactly what to watch, and what they should notice.
+    Never ship a visualizer without this.
+  </div>
+
+  <div id="demo"></div>
+
+</div>
+
+<script src="{{SHARED}}/js/page.js"></script>
+<script src="{{SHARED}}/js/anim.js"></script>
+<script src="{{SHARED}}/js/codeblock.js"></script>
+<script>
+/* Build on anim.js: it supplies the loop, the play/step/reset controls, canvas
+   scaling, theming and draggable handles. See docs/AUTHORING_GUIDE.md section 8.
+
+   Remember: if this sketch animates, it MUST keep the 'step' control. That
+   button is how a student sees a game as a sequence of discrete frames. */
+(function () {
+  var sk = Anim.sketch({
+    mount: '#demo',
+    width: 900, height: 420,       // LOGICAL size; the canvas scales to fit
+    fps: 60,                       // one logical frame lasts 1/fps seconds
+    controls: ['play', 'step', 'reset', 'speed'],
+
+    state: function () {
+      return { x: 60 };
+    },
+
+    update: function (s, dt, api) {
+      s.x += 120 * dt;             // 120 pixels per SECOND, not per frame
+      if (s.x > 840) { s.x = 60; }
+    },
+
+    draw: function (s, g, api) {
+      var T = g.color;             // theme colours: never hard-code a hex value
+      g.clear();
+      g.circle(s.x, 210, 24, T.accent);
+      api.say('CHANGE ME: narrate what just happened, so a student reading alone ' +
+              'gets what the teacher would have said out loud.');
+    }
+  });
+}());
+</script>
+</body>
+</html>

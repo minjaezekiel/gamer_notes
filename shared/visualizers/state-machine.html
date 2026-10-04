@@ -1,0 +1,321 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Game States</title>
+<meta name="description" content="Press buttons and watch a game move between menu, playing, paused and game over - and watch most presses get ignored on purpose.">
+<link rel="stylesheet" href="../css/notes.css">
+<link rel="stylesheet" href="../css/code.css">
+</head>
+<body>
+<div class="wrap">
+
+  <p class="breadcrumb"><a href="index.html">&larr; All visualizers</a></p>
+
+  <header class="lesson-head">
+    <p class="kicker">Concept 9 &middot; Works for JavaScript, Python and C++</p>
+    <h1>Game States: One Game, Several Modes</h1>
+    <p class="meta">Why the same key does different things at different times. Used in: web L5 &middot; python L6 &middot; c++ L6</p>
+  </header>
+
+  <p class="lede">A game is never doing just one thing. Sometimes it is showing a menu. Sometimes it is
+  playing. Sometimes it is paused. The trick is that it is only <strong>ever in exactly one of
+  these at a time</strong>, and that single fact removes an enormous amount of confusing code.</p>
+
+  <div class="look-for">
+    <strong>What to look for</strong>
+    Press the buttons in any order you like. Two things to notice. First, the <strong>same button
+    does different things</strong> depending on the glowing box. Second, <strong>most presses are
+    ignored</strong> &mdash; try pressing <em>P to pause</em> while you are on the menu. Nothing
+    happens, and that is correct behaviour, not a missing feature.
+  </div>
+
+  <div id="smDemo"></div>
+
+  <h2>What this replaces</h2>
+
+  <div class="cols cols-2">
+    <div>
+      <p><strong>Without states &mdash; the tangle</strong></p>
+      <div class="code" data-lang="js" data-numbers="off">
+<pre><code>// flags everywhere
+let started = false;
+let paused = false;
+let dead = false;
+let inMenu = true;
+
+if (started && !paused && !dead) {
+  updatePlayer();
+}
+if (!started && inMenu && !dead) {
+  drawMenu();
+}
+// ...and what does it mean
+// if started AND inMenu are
+// both true? Nobody knows.</code></pre>
+      </div>
+    </div>
+    <div>
+      <p><strong>With one state &mdash; the untangle</strong></p>
+      <div class="code" data-lang="js" data-numbers="off">
+<pre><code>// ONE variable. One truth.
+let state = "MENU";
+
+function update(dt) {
+  if (state === "PLAYING") {
+    updatePlayer(dt);
+    updateEnemies(dt);
+  }
+  // PAUSED updates nothing,
+  // which is the whole point
+  // of being paused.
+}
+
+function draw() {
+  if (state === "MENU")    drawMenu();
+  if (state === "PLAYING") drawGame();
+  if (state === "PAUSED")  { drawGame(); drawPauseOverlay(); }
+  if (state === "GAME_OVER") drawScores();
+}</code></pre>
+      </div>
+    </div>
+  </div>
+
+  <div class="box box-goal">
+    <span class="box-label">The big idea: make illegal situations impossible</span>
+    <p>With four separate true/false flags there are 2&times;2&times;2&times;2 = <strong>16</strong>
+    combinations, and only four of them make any sense. The other twelve are bugs waiting to happen
+    &mdash; paused <em>and</em> dead <em>and</em> in the menu at once.</p>
+    <p>With one state variable there are exactly <strong>four</strong> possibilities, and all four are
+    valid. You did not fix those twelve bugs. You made them <em>impossible to write</em>. That is a
+    much stronger kind of fix, and looking for chances to do it is one of the most valuable habits in
+    all of programming.</p>
+  </div>
+
+  <div class="box box-warn">
+    <span class="box-label">A common mistake</span>
+    <p>Students often put the pause check inside every single object:</p>
+    <div class="code" data-lang="js" data-numbers="off">
+<pre><code>// in the player, and the enemy, and the bullet, and the particles...
+if (!paused) { this.x += this.vx * dt; }</code></pre>
+    </div>
+    <p>Now pausing depends on remembering that check in twenty places, and you will forget one &mdash;
+    so one enemy keeps walking while the game is paused. Check the state <strong>once</strong>, in the
+    loop, and simply do not call update at all.</p>
+  </div>
+
+  <div class="box box-think">
+    <span class="box-label">Think like an engineer</span>
+    <p>Draw the state diagram for a game you actually play. Include the states most people forget:
+    the loading screen, the settings menu, the cutscene, the &ldquo;are you sure you want to quit?&rdquo;
+    box, the level-complete screen.</p>
+    <p>Then find a transition that <em>should not</em> be allowed and ask what would go wrong if it
+    were. For example: what breaks if you could go from PAUSED straight to GAME_OVER? Finally, think
+    about where the music should change &mdash; is music a part of the state, or a reaction to it?</p>
+  </div>
+
+  <div class="box box-vocab">
+    <span class="box-label">Vocabulary</span>
+    <ul>
+      <li><strong>State machine</strong> &mdash; a design where a thing is in exactly one named state at
+      a time, and only certain moves between states are allowed.</li>
+      <li><strong>State</strong> &mdash; one of the named modes. (Careful: this word also means &ldquo;all
+      the numbers the game remembers&rdquo;. Both uses are standard, and you work out which from context.)</li>
+      <li><strong>Transition</strong> &mdash; a permitted move from one state to another.</li>
+      <li><strong>Event</strong> &mdash; something that happens, such as a key press, that may cause a
+      transition.</li>
+    </ul>
+  </div>
+
+  <p class="breadcrumb"><a href="index.html">&larr; All visualizers</a></p>
+</div>
+
+<script src="../js/page.js"></script>
+<script src="../js/anim.js"></script>
+<script src="../js/codeblock.js"></script>
+<script>
+/* ---------------------------------------------------------------------------
+   A clickable state machine.
+
+   The pedagogical point is carried by the IGNORED presses. A student who presses
+   "P to pause" on the menu and sees "ignored" learns, in one second, that a state
+   machine is mostly about what you are NOT allowed to do.
+   ------------------------------------------------------------------------ */
+(function () {
+  var NODE_W = 172, NODE_H = 62;
+
+  // Each state, and where to draw it.
+  var NODES = {
+    MENU:      { x: 118, y: 92,  label: 'MENU',      blurb: 'title screen' },
+    PLAYING:   { x: 392, y: 92,  label: 'PLAYING',   blurb: 'the actual game' },
+    GAME_OVER: { x: 666, y: 92,  label: 'GAME_OVER', blurb: 'final score' },
+    PAUSED:    { x: 392, y: 268, label: 'PAUSED',    blurb: 'frozen' }
+  };
+
+  /* The rules. Read this table out loud and it is the whole design:
+     "from MENU, the START event takes you to PLAYING". Anything not listed here
+     simply cannot happen. */
+  var RULES = [
+    { from: 'MENU',      event: 'START',   to: 'PLAYING'   },
+    { from: 'PLAYING',   event: 'PAUSE',   to: 'PAUSED'    },
+    { from: 'PAUSED',    event: 'PAUSE',   to: 'PLAYING'   },
+    { from: 'PLAYING',   event: 'DIE',     to: 'GAME_OVER' },
+    { from: 'GAME_OVER', event: 'RESTART', to: 'PLAYING'   },
+    { from: 'GAME_OVER', event: 'QUIT',    to: 'MENU'      },
+    { from: 'PAUSED',    event: 'QUIT',    to: 'MENU'      }
+  ];
+
+  var EVENTS = [
+    { id: 'START',   label: 'Press Start' },
+    { id: 'PAUSE',   label: 'Press P' },
+    { id: 'DIE',     label: 'Lose last life' },
+    { id: 'RESTART', label: 'Press R' },
+    { id: 'QUIT',    label: 'Press Esc' }
+  ];
+
+  var sk = Anim.sketch({
+    mount: '#smDemo',
+    width: 900, height: 420,
+    controls: ['reset'],
+    showFrameCount: false,
+
+    state: function () {
+      return { current: 'MENU', lastRule: null, lastEvent: null, accepted: null, log: [] };
+    },
+
+    draw: function (s, g, api) {
+      var T = g.color;
+      g.clear();
+
+      g.text('ONE GAME, FOUR MODES — AND IT IS ALWAYS IN EXACTLY ONE', 24, 32,
+        { size: 15, bold: true, color: T.muted });
+
+      /* ---- transitions first, so nodes sit on top ---- */
+      RULES.forEach(function (r) {
+        var isLast = (s.lastRule === r);
+        drawTransition(g, T, r, isLast);
+      });
+
+      /* ---- the nodes ---- */
+      Object.keys(NODES).forEach(function (name) {
+        var n = NODES[name];
+        var active = (name === s.current);
+        var x = n.x, y = n.y;
+        g.panel(x, y, NODE_W, NODE_H, active ? T.good : T.panel, 10);
+        if (!active) { g.strokeRect(x, y, NODE_W, NODE_H, T.grid, 2); }
+        g.text(n.label, x + NODE_W / 2, y + 28,
+          { size: 18, bold: true, align: 'center', color: active ? T.bg : T.ink, mono: true });
+        g.text(active ? 'you are here' : n.blurb, x + NODE_W / 2, y + 48,
+          { size: 12, align: 'center', color: active ? T.bg : T.muted });
+      });
+
+      /* ---- the code, with the live branch highlighted ---- */
+      var CX = 24, CY = 348;
+      g.text('state = "' + s.current + '"', CX, CY,
+        { size: 17, bold: true, color: T.good, mono: true });
+      var branches = ['MENU', 'PLAYING', 'PAUSED', 'GAME_OVER'];
+      branches.forEach(function (b, i) {
+        var bx = CX + 234 + i * 160;
+        var on = (b === s.current);
+        g.text('if (state=="' + b + '")', bx, CY - 12,
+          { size: 11.5, bold: on, color: on ? T.ink : T.grid, mono: true });
+        g.text(on ? 'RUNS' : 'skipped', bx, CY + 6,
+          { size: 11.5, bold: on, color: on ? T.good : T.grid });
+      });
+
+      /* ---- verdict for the last press ---- */
+      if (s.lastEvent) {
+        var msg = s.accepted
+          ? '<strong>' + s.lastEvent + '</strong> was accepted: ' +
+            s.lastRule.from + ' → <strong>' + s.lastRule.to + '</strong>.'
+          : '<strong>' + s.lastEvent + '</strong> was <strong>ignored</strong>. There is no rule for ' +
+            s.lastEvent + ' while the game is in ' + s.current +
+            ', so nothing happens — and that is deliberate.';
+        api.say(msg);
+      }
+
+      g.text(s.log.slice(-6).join('   →   ') || 'no events yet', 24, 404,
+        { size: 12.5, color: T.muted, mono: true });
+    },
+
+    onReset: function (s, api) {
+      api.say('The game starts in <strong>MENU</strong>. Press a button below.');
+    }
+  });
+
+  function centre(name) {
+    var n = NODES[name];
+    return { x: n.x + NODE_W / 2, y: n.y + NODE_H / 2 };
+  }
+
+  /* Draw one arrow for one rule. Pairs that run both ways (PLAYING <-> PAUSED)
+     are nudged sideways so they do not land on top of each other. */
+  function drawTransition(g, T, r, isLast) {
+    var a = centre(r.from), b = centre(r.to);
+    var colour = isLast ? T.accent2 : T.grid;
+    var width = isLast ? 3.5 : 2;
+
+    var dx = b.x - a.x, dy = b.y - a.y;
+    var len = Math.hypot(dx, dy) || 1;
+    var ux = dx / len, uy = dy / len;
+    // Offset perpendicular to the line so two-way pairs are separable.
+    var sideways = (r.from === 'PLAYING' && r.to === 'PAUSED') ? 22
+                 : (r.from === 'PAUSED' && r.to === 'PLAYING') ? -22 : 0;
+    var px = -uy * sideways, py = ux * sideways;
+
+    // Stop the arrow at the edge of each box rather than at its centre.
+    var pad = 0.5 * (Math.abs(ux) * NODE_W + Math.abs(uy) * NODE_H) + 8;
+    var x1 = a.x + ux * pad + px, y1 = a.y + uy * pad + py;
+    var x2 = b.x - ux * pad + px, y2 = b.y - uy * pad + py;
+
+    // The long way home (GAME_OVER back to MENU) gets a curve under everything.
+    if (r.from === 'GAME_OVER' && r.to === 'MENU') {
+      var ctx = g.ctx;
+      ctx.save();
+      ctx.strokeStyle = colour;
+      ctx.lineWidth = width;
+      ctx.beginPath();
+      ctx.moveTo(a.x, NODES.GAME_OVER.y - 6);
+      ctx.bezierCurveTo(a.x, 24, centre('MENU').x, 24, centre('MENU').x, NODES.MENU.y - 6);
+      ctx.stroke();
+      ctx.restore();
+      g.arrow(centre('MENU').x + 12, NODES.MENU.y - 18, centre('MENU').x, NODES.MENU.y - 6,
+        colour, width);
+      g.text(r.event, (a.x + centre('MENU').x) / 2, 18,
+        { size: 12, bold: true, align: 'center', color: isLast ? T.accent2 : T.muted, mono: true });
+      return;
+    }
+
+    g.arrow(x1, y1, x2, y2, colour, width);
+    g.text(r.event, (x1 + x2) / 2 + (sideways ? 46 : 0), (y1 + y2) / 2 - 7,
+      { size: 12, bold: true, align: 'center',
+        color: isLast ? T.accent2 : T.muted, mono: true });
+  }
+
+  /* ---- one button per event ---- */
+  EVENTS.forEach(function (e) {
+    sk.button(e.label, function () {
+      var s = sk.state;
+      var rule = null;
+      for (var i = 0; i < RULES.length; i++) {
+        if (RULES[i].from === s.current && RULES[i].event === e.id) { rule = RULES[i]; break; }
+      }
+      s.lastEvent = e.id;
+      if (rule) {
+        s.accepted = true;
+        s.lastRule = rule;
+        s.log.push(rule.from + '-' + e.id + '->' + rule.to);
+        s.current = rule.to;        // THE transition. One assignment.
+      } else {
+        s.accepted = false;
+        s.lastRule = null;
+        s.log.push(e.id + ' ignored in ' + s.current);
+      }
+      if (s.log.length > 30) { s.log.shift(); }
+    });
+  });
+}());
+</script>
+</body>
+</html>

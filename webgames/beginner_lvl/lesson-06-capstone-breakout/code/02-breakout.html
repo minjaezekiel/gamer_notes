@@ -1,0 +1,489 @@
+<!doctype html>
+<!-- ==========================================================================
+     02 - BREAKOUT  (the finished beginner course)
+     Lesson 6, Web Games, Beginner
+
+     Every idea from the whole two weeks, in one file:
+       L1  the game loop, state, erase-then-draw
+       L2  delta time, velocity, wall bouncing
+       L3  polled input, clamping
+       L4  AABB collision, hitboxes, ball steering
+       L5  state machine, score, sound, shake, particles
+       L6  levels as DATA, decomposition, which-side-did-it-hit
+
+     RUN IT:    Double-click, click the canvas, press SPACE.
+     CONTROLS:  left/right arrows or A/D, or the mouse. P pauses.
+
+     CHANGE ME FIRST:
+       The LEVELS arrays below. Type different digits and reload. You are
+       designing levels without touching a single line of game logic - that is
+       what "data-driven" means.
+     ========================================================================== -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Breakout</title>
+<style>
+  body { background:#f0f0f0; font-family:system-ui, sans-serif;
+         display:flex; flex-direction:column; align-items:center; padding:20px; }
+  canvas { border:2px solid #888; }
+  p { max-width:640px; color:#444; }
+</style>
+</head>
+<body>
+
+<h1>Breakout</h1>
+<canvas id="game" width="640" height="480"></canvas>
+<p>Arrow keys, A/D, or the mouse. <strong>P</strong> to pause.
+Hold <strong>H</strong> to see the hitboxes.</p>
+
+<script>
+  const canvas = document.getElementById("game");
+  const ctx = canvas.getContext("2d");
+  const W = canvas.width;
+  const H = canvas.height;
+
+  // =====================================================================
+  // THE LEVELS - data, not code.  0 = nothing, 1 = normal, 2 = tough
+  // =====================================================================
+  const LEVELS = [
+    [
+      [1, 1, 1, 1, 1, 1, 1, 1],
+      [1, 1, 1, 1, 1, 1, 1, 1],
+      [1, 1, 1, 1, 1, 1, 1, 1]
+    ],
+    [
+      [2, 2, 2, 2, 2, 2, 2, 2],
+      [1, 1, 0, 1, 1, 0, 1, 1],
+      [1, 0, 0, 1, 1, 0, 0, 1],
+      [1, 1, 0, 1, 1, 0, 1, 1]
+    ],
+    [
+      [0, 0, 1, 1, 1, 1, 0, 0],
+      [0, 1, 2, 1, 1, 2, 1, 0],
+      [1, 2, 1, 1, 1, 1, 2, 1],
+      [0, 1, 1, 0, 0, 1, 1, 0],
+      [0, 0, 1, 1, 1, 1, 0, 0]
+    ]
+  ];
+
+  // ---- tuning numbers, all in one place --------------------------------
+  const BRICK_W = 68, BRICK_H = 24, GAP = 6;
+  const BRICK_LEFT = 32, BRICK_TOP = 56;
+  const PADDLE_SPEED = 520;
+  const BALL_SPEED = 330;
+  const STEER_STRENGTH = 300;
+  const STARTING_LIVES = 3;
+
+  // =====================================================================
+  // STATE
+  // =====================================================================
+  let state = "MENU";          // MENU | PLAYING | PAUSED | LEVEL_DONE | GAME_OVER | WON
+  let score = 0;
+  let lives = STARTING_LIVES;
+  let levelIndex = 0;
+  let bricks = [];
+
+  const paddle = { x: W / 2 - 50, y: H - 40, w: 100, h: 14 };
+  const ball = { x: W / 2, y: H - 60, radius: 8, speedX: 0, speedY: 0, stuck: true };
+
+  const particles = [];
+  const PARTICLE_LIFE = 0.45;
+  let shakeTime = 0, shakeStrength = 0, shakeTotal = 0.12;
+  let lastTime = 0;
+  let mouseX = null;
+
+  // =====================================================================
+  // INPUT
+  // =====================================================================
+  const keys = {};
+  document.addEventListener("keydown", function (e) {
+    keys[e.key] = true;
+    if (e.key.startsWith("Arrow") || e.key === " ") { e.preventDefault(); }
+
+    if (e.key === " ") {
+      if (state === "MENU") { startGame(); }
+      else if (state === "GAME_OVER" || state === "WON") { startGame(); }
+      else if (state === "LEVEL_DONE") { nextLevel(); }
+      else if (state === "PLAYING" && ball.stuck) { launchBall(); }
+    }
+    if (e.key === "p" || e.key === "P") {
+      if (state === "PLAYING") { state = "PAUSED"; }
+      else if (state === "PAUSED") { state = "PLAYING"; }
+    }
+  });
+  document.addEventListener("keyup", function (e) { keys[e.key] = false; });
+
+  canvas.addEventListener("mousemove", function (e) {
+    const b = canvas.getBoundingClientRect();
+    mouseX = e.clientX - b.left;
+  });
+  canvas.addEventListener("mousedown", function () {
+    if (state === "PLAYING" && ball.stuck) { launchBall(); }
+  });
+
+  // =====================================================================
+  // SOUND
+  // =====================================================================
+  let audio = null;
+  function beep(frequency, duration) {
+    if (!audio) { audio = new AudioContext(); }
+    const osc = audio.createOscillator();
+    const vol = audio.createGain();
+    osc.frequency.value = frequency;
+    osc.type = "square";
+    vol.gain.setValueAtTime(0.06, audio.currentTime);
+    vol.gain.exponentialRampToValueAtTime(0.0001, audio.currentTime + duration);
+    osc.connect(vol); vol.connect(audio.destination);
+    osc.start(); osc.stop(audio.currentTime + duration);
+  }
+
+  // =====================================================================
+  // JUICE
+  // =====================================================================
+  function addShake(strength, duration) {
+    shakeStrength = Math.max(shakeStrength, strength);
+    shakeTime = Math.max(shakeTime, duration);
+    shakeTotal = Math.max(shakeTotal, duration);
+  }
+
+  function spawnParticles(x, y, count, colour) {
+    for (let i = 0; i < count; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const speed = 60 + Math.random() * 190;
+      particles.push({
+        x: x, y: y,
+        speedX: Math.cos(angle) * speed,
+        speedY: Math.sin(angle) * speed,
+        life: PARTICLE_LIFE, colour: colour
+      });
+    }
+  }
+
+  function updateParticles(dt) {
+    // Backwards: removing an item shifts everything after it down one index.
+    for (let i = particles.length - 1; i >= 0; i--) {
+      const p = particles[i];
+      p.x += p.speedX * dt;
+      p.y += p.speedY * dt;
+      p.speedY += 260 * dt;
+      p.life -= dt;
+      if (p.life <= 0) { particles.splice(i, 1); }
+    }
+  }
+
+  // =====================================================================
+  // LEVELS
+  // =====================================================================
+  function buildLevel(layout) {
+    const result = [];
+    for (let y = 0; y < layout.length; y++) {
+      for (let x = 0; x < layout[y].length; x++) {
+        const kind = layout[y][x];         // row first, THEN column
+        if (kind === 0) { continue; }
+        result.push({
+          x: BRICK_LEFT + x * (BRICK_W + GAP),
+          y: BRICK_TOP  + y * (BRICK_H + GAP),
+          w: BRICK_W, h: BRICK_H,
+          hitsLeft: kind, alive: true
+        });
+      }
+    }
+    return result;
+  }
+
+  function startGame() {
+    score = 0;
+    lives = STARTING_LIVES;
+    levelIndex = 0;
+    particles.length = 0;
+    bricks = buildLevel(LEVELS[0]);
+    resetBall();
+    state = "PLAYING";
+  }
+
+  function nextLevel() {
+    levelIndex++;
+    if (levelIndex >= LEVELS.length) { state = "WON"; return; }
+    bricks = buildLevel(LEVELS[levelIndex]);
+    resetBall();
+    state = "PLAYING";
+  }
+
+  function resetBall() {
+    // The ball sits on the paddle until the player launches it. This gives
+    // them a moment to get ready, which matters a lot after losing a life.
+    ball.stuck = true;
+    ball.speedX = 0;
+    ball.speedY = 0;
+  }
+
+  function launchBall() {
+    ball.stuck = false;
+    ball.speedX = (Math.random() * 2 - 1) * 120;
+    ball.speedY = -BALL_SPEED;
+    beep(520, 0.05);
+  }
+
+  function loseALife() {
+    lives--;
+    beep(120, 0.3);
+    addShake(12, 0.25);
+    spawnParticles(ball.x, H - 6, 24, "#ff6b6b");
+    if (lives <= 0) { state = "GAME_OVER"; }
+    else { resetBall(); }
+  }
+
+  // =====================================================================
+  // COLLISION
+  // =====================================================================
+  function boxesOverlap(a, b) {
+    return a.x < b.x + b.w && a.x + a.w > b.x &&
+           a.y < b.y + b.h && a.y + a.h > b.y;
+  }
+  function ballBox() {
+    return { x: ball.x - ball.radius, y: ball.y - ball.radius,
+             w: ball.radius * 2, h: ball.radius * 2 };
+  }
+
+  function bounceOffBrick(brick) {
+    // WHICH SIDE did the ball come in through?
+    // Work out how much the two boxes overlap on each axis. The SMALLER
+    // overlap is the direction it arrived from: a ball that has just poked in
+    // from above overlaps a lot horizontally and barely at all vertically.
+    //
+    // Always flipping speedY instead is the classic bug - a ball clipping a
+    // brick's side then carries on sideways through the whole row.
+    const b = ballBox();
+    const overlapX = Math.min(b.x + b.w, brick.x + brick.w) - Math.max(b.x, brick.x);
+    const overlapY = Math.min(b.y + b.h, brick.y + brick.h) - Math.max(b.y, brick.y);
+
+    if (overlapY < overlapX) {
+      ball.speedY = -ball.speedY;
+    } else {
+      ball.speedX = -ball.speedX;
+    }
+  }
+
+  function checkBrickCollisions() {
+    for (const brick of bricks) {
+      if (!brick.alive) { continue; }
+      if (!boxesOverlap(ballBox(), brick)) { continue; }
+
+      bounceOffBrick(brick);
+      brick.hitsLeft--;
+
+      if (brick.hitsLeft <= 0) {
+        brick.alive = false;
+        score += 100;
+        spawnParticles(brick.x + brick.w / 2, brick.y + brick.h / 2, 10, "#ffd43b");
+        beep(660, 0.05);
+        addShake(3, 0.07);
+      } else {
+        score += 25;
+        beep(440, 0.04);
+        spawnParticles(brick.x + brick.w / 2, brick.y + brick.h / 2, 4, "#ff9246");
+      }
+
+      // Only ONE brick per frame. Without this, a ball sitting between two
+      // bricks destroys both and flips its velocity twice, so it carries on in
+      // the same direction. Real Breakout does exactly this.
+      break;
+    }
+
+    if (bricks.every(b => !b.alive)) {
+      state = "LEVEL_DONE";
+      beep(780, 0.2);
+    }
+  }
+
+  // =====================================================================
+  // UPDATE  - each function does ONE job
+  // =====================================================================
+  function updatePaddle(dt) {
+    const wantsLeft  = keys["ArrowLeft"]  || keys["a"] || keys["A"];
+    const wantsRight = keys["ArrowRight"] || keys["d"] || keys["D"];
+
+    if (wantsLeft)  { paddle.x -= PADDLE_SPEED * dt; mouseX = null; }
+    if (wantsRight) { paddle.x += PADDLE_SPEED * dt; mouseX = null; }
+    if (mouseX !== null) { paddle.x = mouseX - paddle.w / 2; }
+
+    if (paddle.x < 0) { paddle.x = 0; }
+    if (paddle.x + paddle.w > W) { paddle.x = W - paddle.w; }
+  }
+
+  function updateBall(dt) {
+    if (ball.stuck) {
+      // Ride along on top of the paddle.
+      ball.x = paddle.x + paddle.w / 2;
+      ball.y = paddle.y - ball.radius - 1;
+      return;
+    }
+
+    ball.x += ball.speedX * dt;
+    ball.y += ball.speedY * dt;
+
+    // walls - position first, then velocity
+    if (ball.x - ball.radius < 0) {
+      ball.x = ball.radius; ball.speedX = -ball.speedX; beep(300, 0.03);
+    }
+    if (ball.x + ball.radius > W) {
+      ball.x = W - ball.radius; ball.speedX = -ball.speedX; beep(300, 0.03);
+    }
+    if (ball.y - ball.radius < 0) {
+      ball.y = ball.radius; ball.speedY = -ball.speedY; beep(300, 0.03);
+    }
+
+    // fell off the bottom
+    if (ball.y - ball.radius > H) { loseALife(); }
+  }
+
+  function checkPaddleCollision() {
+    if (ball.stuck || ball.speedY < 0) { return; }
+    if (!boxesOverlap(ballBox(), paddle)) { return; }
+
+    ball.y = paddle.y - ball.radius;      // position first
+    ball.speedY = -Math.abs(ball.speedY);
+
+    // Where on the paddle? -1 left edge, 0 middle, +1 right edge.
+    // Design, not physics: this is what lets the player AIM.
+    const centre = paddle.x + paddle.w / 2;
+    const hitOffset = (ball.x - centre) / (paddle.w / 2);
+    ball.speedX = hitOffset * STEER_STRENGTH;
+
+    beep(380 + hitOffset * 100, 0.05);
+    addShake(3, 0.06);
+  }
+
+  function update(dt) {
+    if (state !== "PAUSED") {
+      updateParticles(dt);
+      if (shakeTime > 0) { shakeTime -= dt; }
+    }
+    // ONE state check, here. Not scattered through every object.
+    if (state !== "PLAYING") { return; }
+
+    updatePaddle(dt);
+    updateBall(dt);
+    checkPaddleCollision();
+    checkBrickCollisions();
+  }
+
+  // =====================================================================
+  // RENDER  - each function draws ONE thing
+  // =====================================================================
+  function drawBricks() {
+    for (const brick of bricks) {
+      if (!brick.alive) { continue; }
+      ctx.fillStyle = brick.hitsLeft >= 2 ? "#ff9246" : "#4a9eff";
+      ctx.fillRect(brick.x, brick.y, brick.w, brick.h);
+      ctx.fillStyle = "rgba(255,255,255,0.12)";
+      ctx.fillRect(brick.x, brick.y, brick.w, 4);   // a highlight along the top
+    }
+  }
+
+  function drawHud() {
+    ctx.fillStyle = "#8b94a0";
+    ctx.font = "16px ui-monospace, Menlo, monospace";
+    ctx.fillText("score " + score, 16, 28);
+    ctx.fillText("level " + (levelIndex + 1), W / 2 - 34, 28);
+    ctx.textAlign = "right";
+    ctx.fillText("lives " + "@".repeat(Math.max(0, lives)), W - 16, 28);
+    ctx.textAlign = "left";
+  }
+
+  function drawParticles() {
+    for (const p of particles) {
+      ctx.globalAlpha = p.life / PARTICLE_LIFE;   // remaining / total
+      ctx.fillStyle = p.colour;
+      ctx.fillRect(p.x - 2, p.y - 2, 4, 4);
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  function drawCentred(text, y, size, colour) {
+    ctx.fillStyle = colour;
+    ctx.font = "bold " + size + "px system-ui, sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText(text, W / 2, y);
+    ctx.textAlign = "left";
+  }
+
+  function drawOverlay(title, subtitle, colour) {
+    ctx.fillStyle = "rgba(0,0,0,0.68)";
+    ctx.fillRect(-40, -40, W + 80, H + 80);
+    drawCentred(title, H / 2 - 10, 42, colour);
+    drawCentred(subtitle, H / 2 + 28, 16, "#8b94a0");
+  }
+
+  function render() {
+    ctx.save();
+    if (shakeTime > 0 && shakeTotal > 0) {
+      const fade = shakeTime / shakeTotal;
+      ctx.translate((Math.random() - 0.5) * 2 * shakeStrength * fade,
+                    (Math.random() - 0.5) * 2 * shakeStrength * fade);
+    }
+
+    ctx.fillStyle = "#15181d";
+    ctx.fillRect(-40, -40, W + 80, H + 80);
+
+    if (state === "MENU") {
+      drawCentred("BREAKOUT", H / 2 - 40, 54, "#eee");
+      drawCentred("press SPACE to play", H / 2 + 6, 17, "#8b94a0");
+      drawCentred("arrows, A/D, or the mouse", H / 2 + 36, 14, "#5d6672");
+    } else {
+      drawBricks();
+      drawParticles();
+
+      ctx.fillStyle = "#e8ebee";
+      ctx.fillRect(paddle.x, paddle.y, paddle.w, paddle.h);
+
+      ctx.beginPath();
+      ctx.arc(ball.x, ball.y, ball.radius, 0, Math.PI * 2);
+      ctx.fill();
+
+      drawHud();
+
+      if (ball.stuck && state === "PLAYING") {
+        drawCentred("press SPACE to launch", H - 90, 15, "#8b94a0");
+      }
+
+      if (keys["h"] || keys["H"]) {
+        ctx.strokeStyle = "#51cf66";
+        ctx.lineWidth = 1;
+        const b = ballBox();
+        ctx.strokeRect(b.x, b.y, b.w, b.h);
+        ctx.strokeRect(paddle.x, paddle.y, paddle.w, paddle.h);
+        for (const brick of bricks) {
+          if (brick.alive) { ctx.strokeRect(brick.x, brick.y, brick.w, brick.h); }
+        }
+      }
+
+      if (state === "PAUSED")     { drawOverlay("PAUSED", "P to carry on", "#eee"); }
+      if (state === "LEVEL_DONE") { drawOverlay("LEVEL CLEAR", "SPACE for the next one", "#51cf66"); }
+      if (state === "GAME_OVER")  { drawOverlay("GAME OVER", "score " + score + "  -  SPACE to try again", "#ff6b6b"); }
+      if (state === "WON")        { drawOverlay("YOU WIN", "final score " + score + "  -  SPACE to play again", "#51cf66"); }
+    }
+
+    ctx.restore();
+  }
+
+  // =====================================================================
+  // THE LOOP  - unchanged since lesson 1
+  // =====================================================================
+  function frame(currentTime) {
+    if (!lastTime) { lastTime = currentTime; }
+    let dt = (currentTime - lastTime) / 1000;
+    lastTime = currentTime;
+    if (dt > 0.1) { dt = 1 / 60; }
+
+    update(dt);
+    render();
+    requestAnimationFrame(frame);
+  }
+
+  requestAnimationFrame(frame);
+</script>
+
+</body>
+</html>

@@ -1,0 +1,39 @@
+# Build output from the C++ track.
+# Students compile these themselves; they should never be committed, because a
+# binary built on one machine will not run on another.
+*.o
+*.out
+a.out
+invaders
+01-hello
+02-reading-input
+03-dice-duel
+01-copies
+02-costs
+03-battle
+01-flicker
+02-buffer
+03-dungeon
+01-keys
+03-maze
+01-vectors
+02-pong
+
+# Python
+__pycache__/
+*.pyc
+
+# Handout HTML is the intermediate step on the way to the PDF. The PDFs ARE
+# committed, so a teacher can print without running anything; the HTML is not,
+# because it regenerates and would just be a duplicate of the same content.
+#
+# The leading **/ matters: a pattern containing a slash is anchored to the
+# folder holding this .gitignore, so plain "handouts/*.html" would only match
+# one at the repository root.
+**/handouts/*.html
+
+# Save files written by the games when they are played
+highscore.json
+
+# macOS
+.DS_Store

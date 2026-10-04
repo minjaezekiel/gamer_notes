@@ -1,0 +1,432 @@
+/* =============================================================================
+   notes.css — shared styling for every HTML page in the bootcamp.
+
+   Design constraints, all of them driven by the classroom:
+     * Readable from the BACK OF A ROOM on a projector: large base type,
+       high contrast, generous spacing.
+     * Works in light and dark mode, because we do not control the laptop.
+     * Works offline. No webfonts, no CDN.
+     * Works on a phone, because students re-read notes on their phones.
+     * Prints legibly in black and white (see print.css).
+
+   The --anim-* tokens near the top are read by shared/js/anim.js so that canvas
+   drawings use exactly the same palette as the surrounding page.
+   ========================================================================== */
+
+:root {
+  color-scheme: light dark;
+
+  /* ---- page palette ---- */
+  --bg:          #ffffff;
+  --bg-soft:     #f4f6f8;
+  --bg-sunken:   #eceff3;
+  --ink:         #1b1f24;
+  --ink-soft:    #4a5260;
+  --ink-muted:   #6b7480;
+  --rule:        #dde2e8;
+  --accent:      #2f6fed;
+  --accent-soft: #e7efff;
+  --warn:        #f08c00;
+  --warn-soft:   #fff6e5;
+  --good:        #2b8a3e;
+  --good-soft:   #e9f7ec;
+  --bad:         #c92a2a;
+  --bad-soft:    #fdecec;
+  --think:       #7048e8;
+  --think-soft:  #f0eaff;
+
+  /* ---- tokens anim.js reads for canvas drawing ---- */
+  --anim-bg:      #ffffff;
+  --anim-ink:     #1b1f24;
+  --anim-muted:   #6b7480;
+  --anim-grid:    #e3e7ec;
+  --anim-accent:  #2f6fed;
+  --anim-accent2: #e8590c;
+  --anim-good:    #2b8a3e;
+  --anim-bad:     #c92a2a;
+  --anim-warn:    #f08c00;
+  --anim-panel:   #f4f6f8;
+
+  --radius: 10px;
+  --maxw: 68rem;
+  --font: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+}
+
+/* Dark mode. Guarded so an explicit data-theme="light" always wins. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg:          #14171c;
+    --bg-soft:     #1c2026;
+    --bg-sunken:   #24292f;
+    --ink:         #e8ebee;
+    --ink-soft:    #bcc3cc;
+    --ink-muted:   #8b94a0;
+    --rule:        #2e343c;
+    --accent:      #71a2ff;
+    --accent-soft: #1b2a45;
+    --warn:        #ffc14d;
+    --warn-soft:   #3a2d10;
+    --good:        #69d98a;
+    --good-soft:   #14301d;
+    --bad:         #ff8787;
+    --bad-soft:    #3a1a1a;
+    --think:       #b197fc;
+    --think-soft:  #241a40;
+
+    --anim-bg:      #14171c;
+    --anim-ink:     #e8ebee;
+    --anim-muted:   #8b94a0;
+    --anim-grid:    #2b3138;
+    --anim-accent:  #71a2ff;
+    --anim-accent2: #ff9f5a;
+    --anim-good:    #69d98a;
+    --anim-bad:     #ff8787;
+    --anim-warn:    #ffc14d;
+    --anim-panel:   #1c2026;
+  }
+}
+
+:root[data-theme="dark"] {
+  --bg:          #14171c;
+  --bg-soft:     #1c2026;
+  --bg-sunken:   #24292f;
+  --ink:         #e8ebee;
+  --ink-soft:    #bcc3cc;
+  --ink-muted:   #8b94a0;
+  --rule:        #2e343c;
+  --accent:      #71a2ff;
+  --accent-soft: #1b2a45;
+  --warn:        #ffc14d;
+  --warn-soft:   #3a2d10;
+  --good:        #69d98a;
+  --good-soft:   #14301d;
+  --bad:         #ff8787;
+  --bad-soft:    #3a1a1a;
+  --think:       #b197fc;
+  --think-soft:  #241a40;
+
+  --anim-bg:      #14171c;
+  --anim-ink:     #e8ebee;
+  --anim-muted:   #8b94a0;
+  --anim-grid:    #2b3138;
+  --anim-accent:  #71a2ff;
+  --anim-accent2: #ff9f5a;
+  --anim-good:    #69d98a;
+  --anim-bad:     #ff8787;
+  --anim-warn:    #ffc14d;
+  --anim-panel:   #1c2026;
+}
+
+* { box-sizing: border-box; }
+
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  padding: 0 16px 6rem;            /* 16px side gutter, never a horizontal scroll */
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font);
+  font-size: 18px;                 /* large on purpose: projector + phone */
+  line-height: 1.65;
+  overflow-wrap: break-word;
+}
+
+.wrap { max-width: var(--maxw); margin: 0 auto; }
+
+/* ---------- headings ---------- */
+h1, h2, h3, h4 { line-height: 1.2; margin: 2.2em 0 0.6em; font-weight: 700; }
+h1 { font-size: clamp(1.9rem, 5vw, 2.7rem); margin-top: 1.4em; letter-spacing: -0.02em; }
+h2 {
+  font-size: clamp(1.4rem, 3.4vw, 1.85rem);
+  padding-bottom: 0.3em;
+  border-bottom: 2px solid var(--rule);
+}
+h3 { font-size: clamp(1.15rem, 2.6vw, 1.35rem); color: var(--ink-soft); }
+h4 { font-size: 1.05rem; color: var(--ink-soft); }
+h1 + p.lede { font-size: 1.15em; color: var(--ink-soft); margin-top: -0.4em; }
+
+p, ul, ol { margin: 0 0 1.1em; }
+li { margin-bottom: 0.4em; }
+a { color: var(--accent); text-decoration-thickness: 1px; text-underline-offset: 2px; }
+a:hover { text-decoration-thickness: 2px; }
+hr { border: 0; border-top: 1px solid var(--rule); margin: 2.5em 0; }
+strong { font-weight: 700; }
+
+/* ---------- the page header strip ---------- */
+.lesson-head {
+  margin: 1.5rem 0 2rem;
+  padding: 1.2rem 1.4rem;
+  background: var(--bg-soft);
+  border-radius: var(--radius);
+  border-left: 5px solid var(--accent);
+}
+.lesson-head .kicker {
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin: 0 0 0.3rem;
+}
+.lesson-head h1 { margin: 0 0 0.3rem; }
+.lesson-head .meta { margin: 0; color: var(--ink-muted); font-size: 0.95rem; }
+
+/* ---------- callout boxes ----------
+   Each box is one pedagogical move. The left border colour is the signal, and
+   it is backed up by a text label so the meaning survives black-and-white
+   printing and colour-blind readers. */
+.box {
+  margin: 1.6em 0;
+  padding: 1rem 1.2rem;
+  border-radius: var(--radius);
+  border-left: 5px solid var(--accent);
+  background: var(--accent-soft);
+}
+.box > :first-child { margin-top: 0; }
+.box > :last-child { margin-bottom: 0; }
+.box .box-label {
+  display: block;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  margin-bottom: 0.45rem;
+  opacity: 0.85;
+}
+
+.box-goal  { border-color: var(--good);  background: var(--good-soft); }
+.box-warn  { border-color: var(--warn);  background: var(--warn-soft); }
+.box-bug   { border-color: var(--bad);   background: var(--bad-soft); }
+.box-think { border-color: var(--think); background: var(--think-soft); }
+.box-maths { border-color: var(--accent); background: var(--bg-soft); }
+.box-break { border-color: var(--warn);  background: var(--bg-soft); }
+.box-vocab { border-color: var(--ink-muted); background: var(--bg-soft); }
+.box-teacher {
+  border-color: var(--ink-muted);
+  background: var(--bg-sunken);
+  font-size: 0.95em;
+}
+
+/* ---------- tables ---------- */
+.table-scroll { overflow-x: auto; margin: 1.6em 0; }
+table { border-collapse: collapse; width: 100%; font-size: 0.95em; }
+th, td { padding: 0.55em 0.8em; text-align: left; border-bottom: 1px solid var(--rule); }
+th { background: var(--bg-soft); font-weight: 700; }
+tbody tr:hover { background: var(--bg-soft); }
+
+/* ---------- the animation widget (built by anim.js) ---------- */
+.anim {
+  margin: 1.8em 0;
+  padding: 1rem;
+  background: var(--bg-soft);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+}
+.anim:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+
+.anim-stage {
+  background: var(--anim-bg);
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  overflow: hidden;
+  line-height: 0;
+}
+.anim-canvas { display: block; width: 100%; height: auto; touch-action: none; }
+.anim-canvas.is-grabbing { cursor: grabbing; }
+
+.anim-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.8rem;
+}
+
+.anim-btn {
+  font: inherit;
+  font-size: 0.95rem;
+  padding: 0.45em 0.9em;
+  min-height: 44px;                 /* comfortable touch target */
+  background: var(--bg);
+  color: var(--ink);
+  border: 1px solid var(--rule);
+  border-radius: 7px;
+  cursor: pointer;
+}
+.anim-btn:hover { border-color: var(--accent); color: var(--accent); }
+.anim-btn:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.anim-btn-primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+  font-weight: 600;
+}
+.anim-btn-primary:hover { color: #fff; filter: brightness(1.08); }
+
+.anim-speed, .anim-slider, .anim-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.9rem;
+  color: var(--ink-soft);
+}
+.anim-speed input[type="range"], .anim-slider input[type="range"] { width: 7.5rem; }
+.anim-speed output, .anim-slider output {
+  font-family: var(--mono);
+  font-size: 0.85rem;
+  min-width: 2.8em;
+  color: var(--ink);
+}
+.anim-counter {
+  margin-left: auto;
+  font-family: var(--mono);
+  font-size: 0.85rem;
+  color: var(--ink-muted);
+  white-space: nowrap;
+}
+.anim-extras {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem 1.1rem;
+  margin-top: 0.7rem;
+}
+.anim-extras:empty { display: none; }
+.anim-caption {
+  margin: 0.8rem 0 0;
+  font-size: 0.95rem;
+  color: var(--ink-soft);
+  min-height: 1.6em;
+}
+.anim-caption code { font-size: 0.9em; }
+
+/* "What to look for" strip that sits above a visualizer */
+.look-for {
+  margin: 1.6em 0 -0.6em;
+  padding: 0.8rem 1.1rem;
+  background: var(--accent-soft);
+  border-radius: var(--radius) var(--radius) 0 0;
+  font-size: 0.95rem;
+}
+.look-for strong { display: block; margin-bottom: 0.2rem; }
+.look-for + .anim { border-top-left-radius: 0; border-top-right-radius: 0; margin-top: 0; }
+
+/* ---------- side-by-side comparison ---------- */
+.cols {
+  display: grid;
+  gap: 1.2rem;
+  grid-template-columns: 1fr;
+  margin: 1.6em 0;
+}
+@media (min-width: 720px) {
+  .cols-2 { grid-template-columns: 1fr 1fr; }
+  .cols-3 { grid-template-columns: repeat(3, 1fr); }
+}
+
+/* ---------- nav ---------- */
+.breadcrumb {
+  font-size: 0.9rem;
+  color: var(--ink-muted);
+  margin: 1.2rem 0 0;
+}
+.breadcrumb a { color: var(--ink-muted); }
+.lesson-nav {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-top: 3rem;
+  padding-top: 1.2rem;
+  border-top: 1px solid var(--rule);
+}
+
+/* ---------- gallery of visualizers ---------- */
+.gallery {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  margin: 2em 0;
+  padding: 0;
+  list-style: none;
+}
+.gallery a {
+  display: block;
+  height: 100%;
+  padding: 1.1rem;
+  background: var(--bg-soft);
+  border: 1px solid var(--rule);
+  border-left: 4px solid var(--accent);
+  border-radius: var(--radius);
+  text-decoration: none;
+  color: inherit;
+}
+.gallery a:hover { background: var(--accent-soft); border-left-color: var(--warn); }
+.gallery h3 { margin: 0 0 0.3rem; font-size: 1.05rem; color: var(--ink); }
+.gallery p { margin: 0; font-size: 0.9rem; color: var(--ink-muted); }
+.gallery .where {
+  display: block;
+  margin-top: 0.6rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+/* ---------- misc ---------- */
+.theme-toggle {
+  position: fixed;
+  top: 10px; right: 10px;
+  z-index: 50;
+  font: inherit;
+  font-size: 0.85rem;
+  padding: 0.4em 0.7em;
+  min-height: 40px;
+  background: var(--bg-soft);
+  color: var(--ink-soft);
+  border: 1px solid var(--rule);
+  border-radius: 7px;
+  cursor: pointer;
+  opacity: 0.75;
+}
+.theme-toggle:hover { opacity: 1; }
+@media print { .theme-toggle { display: none; } }
+
+.pill {
+  display: inline-block;
+  padding: 0.15em 0.6em;
+  border-radius: 999px;
+  background: var(--bg-sunken);
+  color: var(--ink-soft);
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.checklist { list-style: none; padding-left: 0; }
+.checklist li { padding-left: 1.8em; position: relative; }
+.checklist li::before {
+  content: "\2610";
+  position: absolute;
+  left: 0;
+  font-size: 1.2em;
+  line-height: 1.2;
+  color: var(--ink-muted);
+}
+
+.kbd {
+  font-family: var(--mono);
+  font-size: 0.85em;
+  padding: 0.1em 0.45em;
+  border: 1px solid var(--rule);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  background: var(--bg-soft);
+  white-space: nowrap;
+}
+
+/* Respect a student who gets motion sick. anim.js animations are opt-in via a
+   Play button anyway, which is itself an accessibility decision. */
+@media (prefers-reduced-motion: reduce) {
+  * { animation-duration: 0.001ms !important; transition-duration: 0.001ms !important; }
+}

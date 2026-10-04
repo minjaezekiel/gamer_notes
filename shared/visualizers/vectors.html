@@ -1,0 +1,240 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Vectors</title>
+<meta name="description" content="Drag two arrows. Add them, measure them, and shrink one to length 1 to see what a direction really is.">
+<link rel="stylesheet" href="../css/notes.css">
+<link rel="stylesheet" href="../css/code.css">
+</head>
+<body>
+<div class="wrap">
+
+  <p class="breadcrumb"><a href="index.html">&larr; All visualizers</a></p>
+
+  <header class="lesson-head">
+    <p class="kicker">Concept 2 and 4 &middot; Works for JavaScript, Python and C++</p>
+    <h1>Vectors: Two Numbers That Mean An Arrow</h1>
+    <p class="meta">Used in: web L2 then web intermediate L2 &middot; python intermediate L3 &middot; c++ intermediate L5</p>
+  </header>
+
+  <p class="lede">A vector is just a pair of numbers, <code>x</code> and <code>y</code>. What makes it
+  powerful is that the same pair can mean two different things: <strong>a place</strong>, or
+  <strong>a movement</strong>. Once you can switch between those two readings, a lot of game maths
+  stops being maths and starts being obvious.</p>
+
+  <div class="look-for">
+    <strong>What to look for</strong>
+    Drag the blue and orange arrowheads. Turn on <em>Show A + B</em> and notice that adding vectors
+    means putting them <strong>head to tail</strong> &mdash; walk along A, then walk along B, and the
+    purple arrow is where you ended up. Then turn on <em>Show the unit vector</em> and drag A longer
+    and shorter: the short grey arrow never changes length, only direction.
+  </div>
+
+  <div id="vecDemo"></div>
+
+  <h2>What you can do with a vector</h2>
+
+  <div class="table-scroll">
+  <table>
+    <thead><tr><th>Operation</th><th>Code</th><th>In a game, this is&hellip;</th></tr></thead>
+    <tbody>
+      <tr><td>Add</td><td><code>a.x+b.x, a.y+b.y</code></td><td>applying a movement to a position</td></tr>
+      <tr><td>Subtract</td><td><code>b.x-a.x, b.y-a.y</code></td><td>&ldquo;which way is the enemy from me?&rdquo;</td></tr>
+      <tr><td>Scale</td><td><code>a.x*k, a.y*k</code></td><td>same direction, different speed</td></tr>
+      <tr><td>Length</td><td><code>hypot(x, y)</code></td><td>&ldquo;how far away is it?&rdquo;</td></tr>
+      <tr><td>Normalise</td><td><code>x/len, y/len</code></td><td>&ldquo;which way, ignoring distance&rdquo;</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <div class="box box-goal">
+    <span class="box-label">The recipe you will use constantly: chase</span>
+    <p>&ldquo;Move the enemy towards the player at 120 pixels per second.&rdquo; Three steps, and they are
+    always these three steps:</p>
+    <div class="code" data-lang="js" data-numbers="off">
+<pre><code>// 1. SUBTRACT to get the arrow pointing from the enemy to the player
+let dx = player.x - enemy.x;
+let dy = player.y - enemy.y;
+
+// 2. NORMALISE it, so we have the direction without the distance
+const len = Math.hypot(dx, dy);
+if (len > 0) { dx = dx / len; dy = dy / len; }
+
+// 3. SCALE it by the speed we want, and add it on
+enemy.x = enemy.x + dx * 120 * dt;
+enemy.y = enemy.y + dy * 120 * dt;</code></pre>
+    </div>
+    <p>Subtract, normalise, scale. Homing missiles, enemies that chase, a camera that eases towards the
+    player, a bullet fired at the mouse &mdash; all the same three lines.</p>
+    <p>Note the <code>if (len &gt; 0)</code>. Without it, an enemy standing exactly on the player
+    divides by zero and its position becomes <code>NaN</code>, which makes it vanish from the screen
+    forever. That guard is not optional.</p>
+  </div>
+
+  <div class="box box-warn">
+    <span class="box-label">The diagonal-speed bug</span>
+    <p>Almost every first game has this bug. The player moves with the arrow keys:</p>
+    <div class="code" data-lang="js" data-numbers="off">
+<pre><code>if (keys.right) { player.x += 200 * dt; }
+if (keys.down)  { player.y += 200 * dt; }</code></pre>
+    </div>
+    <p>Hold right <em>and</em> down together and the player moves 200 across <em>and</em> 200 down. By
+    Pythagoras, their actual speed is <code>&radic;(200&sup2; + 200&sup2;) &asymp; 283</code> &mdash;
+    about <strong>41% faster diagonally</strong>. Players discover this within a minute and then run
+    everywhere diagonally.</p>
+    <p>The fix is to build the movement as one vector, normalise it, and <em>then</em> scale by speed.
+    Try it in the demo: drag A to point diagonally and compare its length to a straight one.</p>
+  </div>
+
+  <div class="box box-think">
+    <span class="box-label">Think like an engineer</span>
+    <p>A vector of length 1 is called a <em>unit vector</em>, and it answers &ldquo;which way?&rdquo;
+    with no information about &ldquo;how far?&rdquo;.</p>
+    <p>Why is throwing away the distance <em>useful</em> rather than wasteful? Find three places in a
+    game where you would want the direction and specifically would <strong>not</strong> want the
+    distance. Then find one place where throwing away the distance would be a bug.</p>
+  </div>
+
+  <div class="box box-vocab">
+    <span class="box-label">Vocabulary</span>
+    <ul>
+      <li><strong>Vector</strong> &mdash; a pair of numbers meaning an arrow: a direction together with
+      a length.</li>
+      <li><strong>Magnitude</strong> &mdash; the length of a vector. Found with Pythagoras.</li>
+      <li><strong>Unit vector</strong> &mdash; a vector whose length is exactly 1. Pure direction.</li>
+      <li><strong>Normalise</strong> &mdash; to shrink or grow a vector until its length is 1.</li>
+      <li><strong>Component</strong> &mdash; one of the two numbers; the x component or the y component.</li>
+    </ul>
+  </div>
+
+  <p class="breadcrumb"><a href="index.html">&larr; All visualizers</a></p>
+</div>
+
+<script src="../js/page.js"></script>
+<script src="../js/anim.js"></script>
+<script src="../js/codeblock.js"></script>
+<script>
+(function () {
+  var OX = 300, OY = 250;        // the origin: where both arrows start
+  var GRID = 40;
+  var showSum, showUnit, showParts;
+
+  var sk = Anim.sketch({
+    mount: '#vecDemo',
+    width: 900, height: 440,
+    controls: ['reset'],
+    showFrameCount: false,
+    state: function () { return {}; },
+
+    draw: function (s, g, api) {
+      var T = g.color;
+      g.clear();
+
+      /* ---- the grid and axes ---- */
+      for (var gx = OX % GRID; gx < 620; gx += GRID) { g.line(gx, 20, gx, 420, T.grid, 1); }
+      for (var gy = OY % GRID; gy < 430; gy += GRID) { g.line(10, gy, 620, gy, T.grid, 1); }
+      g.line(10, OY, 620, OY, T.muted, 2);
+      g.line(OX, 20, OX, 420, T.muted, 2);
+      g.text('one square = 40 px', 14, 414, { size: 11, color: T.muted });
+
+      /* ---- the two draggable arrows ---- */
+      var ha = api.handle('a', OX + 160, OY - 120, { hidden: true });
+      var hb = api.handle('b', OX + 80,  OY + 100, { hidden: true });
+      [ha, hb].forEach(function (p) {
+        p.x = Math.max(14, Math.min(616, p.x));
+        p.y = Math.max(22, Math.min(418, p.y));
+      });
+
+      // Convert canvas positions into vector values, in grid-square units so the
+      // numbers are small and readable rather than raw pixel counts.
+      var A = { x: (ha.x - OX), y: (ha.y - OY) };
+      var B = { x: (hb.x - OX), y: (hb.y - OY) };
+      var lenA = Math.hypot(A.x, A.y);
+      var lenB = Math.hypot(B.x, B.y);
+
+      /* ---- components of A, as dashed legs ---- */
+      if (showParts && showParts.checked) {
+        g.dashed(OX, OY, ha.x, OY, T.accent, 2, [5, 4]);
+        g.dashed(ha.x, OY, ha.x, ha.y, T.accent, 2, [5, 4]);
+        g.text('A.x = ' + Math.round(A.x), (OX + ha.x) / 2, OY + (A.y < 0 ? 18 : -8),
+          { size: 12, bold: true, align: 'center', color: T.accent, mono: true });
+        g.text('A.y = ' + Math.round(A.y), ha.x + (A.x < 0 ? -8 : 8), (OY + ha.y) / 2,
+          { size: 12, bold: true, color: T.accent, mono: true,
+            align: A.x < 0 ? 'right' : 'left' });
+      }
+
+      /* ---- A + B, drawn head to tail so the addition is visible as walking ---- */
+      if (showSum && showSum.checked) {
+        // B drawn again, starting at the tip of A.
+        g.ctx.save();
+        g.ctx.globalAlpha = 0.45;
+        g.arrow(ha.x, ha.y, ha.x + B.x, ha.y + B.y, T.accent2, 3);
+        g.ctx.restore();
+        g.arrow(OX, OY, OX + A.x + B.x, OY + A.y + B.y, T.think, 4.5);
+        g.text('A + B', OX + A.x + B.x + 10, OY + A.y + B.y + 4,
+          { size: 15, bold: true, color: T.think, mono: true });
+      }
+
+      /* ---- the unit vector of A ---- */
+      if (showUnit && showUnit.checked && lenA > 0.001) {
+        var ux = A.x / lenA, uy = A.y / lenA;
+        g.arrow(OX, OY, OX + ux * GRID, OY + uy * GRID, T.good, 5);
+        g.ring(OX, OY, GRID, T.good, 1.5);
+        g.text('length 1', OX + ux * GRID + 8, OY + uy * GRID - 8,
+          { size: 12, bold: true, color: T.good });
+      }
+
+      /* ---- the arrows themselves, on top ---- */
+      g.arrow(OX, OY, ha.x, ha.y, T.accent, 4);
+      g.arrow(OX, OY, hb.x, hb.y, T.accent2, 4);
+      api.handle('a', ha.x, ha.y, { label: 'A', color: T.accent, r: 9 });
+      api.handle('b', hb.x, hb.y, { label: 'B', color: T.accent2, r: 9 });
+
+      /* ---- the readouts ---- */
+      var PX = 650;
+      g.text('THE NUMBERS', PX, 42, { size: 15, bold: true, color: T.muted });
+      readout(g, T, PX, 60,  'A', A, lenA, T.accent);
+      readout(g, T, PX, 158, 'B', B, lenB, T.accent2);
+
+      if (showSum && showSum.checked) {
+        var S = { x: A.x + B.x, y: A.y + B.y };
+        readout(g, T, PX, 256, 'A + B', S, Math.hypot(S.x, S.y), T.think);
+        g.text('x: ' + Math.round(A.x) + ' + ' + Math.round(B.x) + ' = ' + Math.round(S.x),
+          PX, 338, { size: 12, color: T.muted, mono: true });
+        g.text('y: ' + Math.round(A.y) + ' + ' + Math.round(B.y) + ' = ' + Math.round(S.y),
+          PX, 356, { size: 12, color: T.muted, mono: true });
+      }
+
+      g.text('length = √(x² + y²)', PX, 404,
+        { size: 13, bold: true, color: T.muted, mono: true });
+      g.text('= √(' + Math.round(A.x) + '² + ' + Math.round(A.y) + '²) = ' +
+             lenA.toFixed(1), PX, 424, { size: 12, color: T.muted, mono: true });
+
+      api.say('Arrow <strong>A</strong> is <strong>' + lenA.toFixed(0) + ' px</strong> long, pointing ' +
+              describe(A) + '. Remember that on a screen, a negative y means <em>upward</em>.');
+    }
+  });
+
+  function readout(g, T, x, y, label, v, len, colour) {
+    g.text(label, x, y + 14, { size: 14, bold: true, color: colour, mono: true });
+    g.text('(' + Math.round(v.x) + ', ' + Math.round(v.y) + ')', x + 54, y + 14,
+      { size: 17, bold: true, color: T.ink, mono: true });
+    g.text('length ' + len.toFixed(1) + ' px', x, y + 36, { size: 13, color: T.muted, mono: true });
+    g.line(x, y + 48, x + 210, y + 48, T.grid, 1);
+  }
+
+  function describe(v) {
+    var h = v.x > 20 ? 'right' : (v.x < -20 ? 'left' : '');
+    var ve = v.y > 20 ? 'down' : (v.y < -20 ? 'up' : '');
+    return (ve + (h && ve ? ' and ' : '') + h) || 'nowhere much';
+  }
+
+  showSum   = sk.toggle('Show A + B (head to tail)', true);
+  showUnit  = sk.toggle('Show the unit vector of A (length 1)', false);
+  showParts = sk.toggle('Show A’s x and y parts', true);
+}());
+</script>
+</body>
+</html>

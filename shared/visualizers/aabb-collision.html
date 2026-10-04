@@ -1,0 +1,238 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Box Collision (AABB)</title>
+<meta name="description" content="Drag two boxes together and watch the four overlap tests flip one by one. The most used collision test in 2D games.">
+<link rel="stylesheet" href="../css/notes.css">
+<link rel="stylesheet" href="../css/code.css">
+</head>
+<body>
+<div class="wrap">
+
+  <p class="breadcrumb"><a href="index.html">&larr; All visualizers</a></p>
+
+  <header class="lesson-head">
+    <p class="kicker">Concept 7 &middot; Works for JavaScript, Python and C++</p>
+    <h1>Box Collision, One Condition at a Time</h1>
+    <p class="meta">Four comparisons, all of which must be true. Used in: web L4 &middot; python L4 &middot; c++ L4</p>
+  </header>
+
+  <p class="lede">Checking whether two rectangles overlap is the most common question in all of 2D game
+  programming. The answer is four comparisons joined by <em>and</em>. The hard part is not the code
+  &mdash; it is believing that four is exactly the right number.</p>
+
+  <div class="look-for">
+    <strong>What to look for</strong>
+    Drag the orange box around. Each of the four conditions on the right turns green on its own. The
+    boxes only count as touching when <strong>all four are green at once</strong>. Try to find a
+    position where three are green and one is red &mdash; that is the case your game gets wrong if
+    you forget a condition.
+  </div>
+
+  <div id="aabbDemo"></div>
+
+  <h2>The code, and why each line is there</h2>
+
+  <div class="code" data-lang="js" data-file="collide.js" data-hl="8-11">
+<pre><code>// A box is four numbers: a top-left corner, plus a width and a height.
+// "AABB" stands for Axis-Aligned Bounding Box. "Axis-aligned" means the box is
+// never rotated - its sides are always parallel to the screen edges. That
+// restriction is what makes the test so cheap.
+
+function boxesOverlap(a, b) {
+  return (
+    a.x < b.x + b.w &&   // 1. a's LEFT edge is left of b's RIGHT edge
+    a.x + a.w > b.x &&   // 2. a's RIGHT edge is right of b's LEFT edge
+    a.y < b.y + b.h &&   // 3. a's TOP edge is above b's BOTTOM edge
+    a.y + a.h > b.y      // 4. a's BOTTOM edge is below b's TOP edge
+  );
+}</code></pre>
+  </div>
+
+  <div class="box box-goal">
+    <span class="box-label">The trick for remembering it</span>
+    <p>Do not try to work out when two boxes <em>do</em> overlap. That has lots of cases: one inside
+    the other, corner clipping corner, one wider than the other.</p>
+    <p>Instead ask the opposite question: <strong>when is it obvious they cannot possibly touch?</strong>
+    There are only four ways to be certain &mdash; a is entirely left of b, entirely right of b,
+    entirely above b, or entirely below b. If none of those four escape routes is true, they must be
+    overlapping. The four conditions above are just those four escape routes, flipped around.</p>
+    <p>Turning a hard question into its easy opposite is a technique you will reuse constantly.</p>
+  </div>
+
+  <h2>The same test in all three languages</h2>
+
+  <div class="cols cols-3">
+    <div class="code" data-lang="js" data-numbers="off">
+<pre><code>a.x < b.x + b.w &&
+a.x + a.w > b.x &&
+a.y < b.y + b.h &&
+a.y + a.h > b.y</code></pre>
+    </div>
+    <div class="code" data-lang="python" data-numbers="off">
+<pre><code>(a.x < b.x + b.w and
+ a.x + a.w > b.x and
+ a.y < b.y + b.h and
+ a.y + a.h > b.y)</code></pre>
+    </div>
+    <div class="code" data-lang="cpp" data-numbers="off">
+<pre><code>a.x < b.x + b.w &&
+a.x + a.w > b.x &&
+a.y < b.y + b.h &&
+a.y + a.h > b.y</code></pre>
+    </div>
+  </div>
+
+  <div class="box box-bug">
+    <span class="box-label">Find the bug</span>
+    <p>A student&rsquo;s ball passes through the paddle about one time in five, always when moving fast.
+    Their collision code is correct. What is wrong, and why does it only happen at speed?</p>
+    <p>(Hint: the test asks &ldquo;are they overlapping <em>right now</em>?&rdquo; What if, between one
+    frame and the next, the ball was never <em>in</em> the paddle at all?)</p>
+  </div>
+
+  <div class="box box-think">
+    <span class="box-label">Think like an engineer</span>
+    <p>This test is cheap, but a game with 500 bullets and 200 enemies would need 100,000 of these
+    checks every single frame.</p>
+    <p>Without looking anything up, invent a way to avoid most of those checks. You are allowed to
+    change how the objects are stored. <em>Hint: if you knew that a bullet was in the top-left part of
+    the screen, which enemies could you skip without even testing?</em></p>
+    <p>Whatever you come up with has a real name and is used in every engine. You will meet it in the
+    advanced level &mdash; but invent it first.</p>
+  </div>
+
+  <div class="box box-vocab">
+    <span class="box-label">Vocabulary</span>
+    <ul>
+      <li><strong>AABB</strong> &mdash; Axis-Aligned Bounding Box. A rectangle that is never rotated.</li>
+      <li><strong>Overlap test</strong> &mdash; code that answers &ldquo;are these two shapes in the
+      same place?&rdquo;</li>
+      <li><strong>Hitbox</strong> &mdash; the invisible box used for collisions, which is often
+      <em>smaller</em> than the drawn picture to make a game feel fairer.</li>
+      <li><strong>Broad phase</strong> &mdash; a quick first pass that throws out pairs which obviously
+      cannot touch.</li>
+    </ul>
+  </div>
+
+  <p class="breadcrumb"><a href="index.html">&larr; All visualizers</a></p>
+</div>
+
+<script src="../js/page.js"></script>
+<script src="../js/anim.js"></script>
+<script src="../js/codeblock.js"></script>
+<script>
+/* ---------------------------------------------------------------------------
+   Drag-two-boxes AABB explainer.
+
+   The design decision that makes this teach: the four conditions are shown
+   SEPARATELY, each with its own green/red light and its own arrow drawn on the
+   boxes. A student can hunt for the position where exactly one is red, which is
+   the whole point of the "and".
+   ------------------------------------------------------------------------ */
+(function () {
+  var STATIC = { x: 250, y: 150, w: 170, h: 120 };   // the blue box, fixed
+  var MOVE_W = 130, MOVE_H = 95;                     // the orange box, dragged
+  var PANEL_X = 520;
+
+  Anim.sketch({
+    mount: '#aabbDemo',
+    width: 900, height: 420,
+    fps: 60,
+    controls: ['reset'],            // nothing animates: this one is pure dragging
+    showFrameCount: false,
+
+    state: function () { return {}; },
+
+    draw: function (s, g, api) {
+      var T = g.color;
+      g.clear();
+
+      // The orange box is positioned by a draggable handle at its CENTRE.
+      var h = api.handle('mover', 150, 120, { hidden: true });
+      h.x = Math.max(MOVE_W / 2, Math.min(PANEL_X - 30 - MOVE_W / 2, h.x));
+      h.y = Math.max(MOVE_H / 2 + 50, Math.min(400 - MOVE_H / 2, h.y));
+
+      var a = { x: h.x - MOVE_W / 2, y: h.y - MOVE_H / 2, w: MOVE_W, h: MOVE_H };
+      var b = STATIC;
+
+      // The four conditions, each kept separately so each can be displayed.
+      var c1 = a.x < b.x + b.w;
+      var c2 = a.x + a.w > b.x;
+      var c3 = a.y < b.y + b.h;
+      var c4 = a.y + a.h > b.y;
+      var hit = c1 && c2 && c3 && c4;
+
+      g.text('DRAG THE ORANGE BOX', 24, 30, { size: 15, bold: true, color: T.muted });
+
+      /* ---- the boxes ---- */
+      // When they overlap, shade the overlapping region so the result is obvious.
+      if (hit) {
+        var ox = Math.max(a.x, b.x), oy = Math.max(a.y, b.y);
+        var ow = Math.min(a.x + a.w, b.x + b.w) - ox;
+        var oh = Math.min(a.y + a.h, b.y + b.h) - oy;
+        g.ctx.save(); g.ctx.globalAlpha = 0.9;
+        g.rect(ox, oy, ow, oh, T.bad);
+        g.ctx.restore();
+      }
+
+      g.ctx.save(); g.ctx.globalAlpha = 0.35;
+      g.rect(b.x, b.y, b.w, b.h, T.accent);
+      g.rect(a.x, a.y, a.w, a.h, T.accent2);
+      g.ctx.restore();
+      g.strokeRect(b.x, b.y, b.w, b.h, T.accent, 3);
+      g.strokeRect(a.x, a.y, a.w, a.h, T.accent2, 3);
+      g.text('b', b.x + 8, b.y + 22, { size: 17, bold: true, color: T.accent });
+      g.text('a', a.x + 8, a.y + 22, { size: 17, bold: true, color: T.accent2 });
+
+      // Edge labels, so "a.x + a.w" is a thing a student can point at.
+      g.text('a.x', a.x, a.y - 7, { size: 11, color: T.accent2, mono: true });
+      g.text('a.x+a.w', a.x + a.w, a.y - 7, { size: 11, align: 'right', color: T.accent2, mono: true });
+      g.text('b.x', b.x, b.y + b.h + 16, { size: 11, color: T.accent, mono: true });
+      g.text('b.x+b.w', b.x + b.w, b.y + b.h + 16, { size: 11, align: 'right', color: T.accent, mono: true });
+
+      api.handle('mover', h.x, h.y, { label: 'drag', color: T.accent2, r: 9 });
+
+      /* ---- the four condition lights ---- */
+      var conds = [
+        { t: 'a.x < b.x + b.w',   v: c1, why: 'a starts before b ends (across)' },
+        { t: 'a.x + a.w > b.x',   v: c2, why: 'a ends after b starts (across)' },
+        { t: 'a.y < b.y + b.h',   v: c3, why: 'a starts before b ends (down)' },
+        { t: 'a.y + a.h > b.y',   v: c4, why: 'a ends after b starts (down)' }
+      ];
+
+      g.text('ALL FOUR MUST BE TRUE', PANEL_X, 30, { size: 15, bold: true, color: T.muted });
+      for (var i = 0; i < 4; i++) {
+        var y = 56 + i * 62;
+        var on = conds[i].v;
+        g.panel(PANEL_X, y, 352, 52, on ? T.good : T.bad, 8);
+        g.text(on ? 'TRUE' : 'FALSE', PANEL_X + 14, y + 23,
+          { size: 13, bold: true, color: T.bg });
+        g.text(conds[i].t, PANEL_X + 74, y + 24,
+          { size: 15, bold: true, color: T.bg, mono: true });
+        g.text(conds[i].why, PANEL_X + 74, y + 42, { size: 12, color: T.bg });
+      }
+
+      /* ---- the verdict ---- */
+      var vy = 320;
+      g.panel(PANEL_X, vy, 352, 62, hit ? T.bad : T.panel, 8);
+      g.text(hit ? 'TOUCHING' : 'not touching', PANEL_X + 176, vy + 30,
+        { size: 24, bold: true, align: 'center', color: hit ? T.bg : T.muted });
+      var trueCount = [c1, c2, c3, c4].filter(Boolean).length;
+      g.text(trueCount + ' of 4 conditions true', PANEL_X + 176, vy + 50,
+        { size: 13, align: 'center', color: hit ? T.bg : T.muted });
+
+      api.say(hit
+        ? '<strong>All four true</strong>, so the boxes overlap. The red area is the shared region.'
+        : trueCount === 3
+          ? 'Three true, one false — and that is enough to miss. <strong>This is exactly the ' +
+            'case you break if you forget a condition.</strong>'
+          : 'Only ' + trueCount + ' of the four are true, so there is no overlap.');
+    }
+  });
+}());
+</script>
+</body>
+</html>

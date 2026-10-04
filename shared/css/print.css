@@ -1,0 +1,267 @@
+/* =============================================================================
+   print.css — styling for the printable handouts.
+
+   Used by tools/build_handouts.py, which renders exercises.md into HTML with
+   this stylesheet and then prints it to PDF with headless Chrome.
+
+   Constraints that come from an actual classroom printer:
+     * BLACK AND WHITE. Never rely on colour to carry meaning.
+     * Cheap paper, so no large dark fills - they bleed and waste toner.
+     * Code must never be clipped at the right edge. Long lines WRAP, with a
+       visible hanging indent so the wrap is obvious.
+     * Students write ON the handout, so answer lines and boxes are provided.
+     * Nothing important may be split across a page break.
+   ========================================================================== */
+
+@page {
+  size: A4;
+  margin: 16mm 15mm 18mm;
+}
+
+/* Running footer with a page number. Chrome draws this from @page margins when
+   printing with --print-to-pdf and header/footer enabled; we also print our own
+   footer text in the document so the handout is identifiable if the browser
+   footer is turned off. */
+
+:root {
+  --pink:  #000;
+  --psoft: #444;
+  --prule: #bbb;
+  --pbg:   #f2f2f2;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: #fff;
+  color: #000;
+}
+
+body {
+  font-family: Georgia, "Times New Roman", serif;   /* serif reads better on paper */
+  font-size: 10.5pt;
+  line-height: 1.5;
+}
+
+/* ---------- the cover / cheat sheet page ---------- */
+.sheet { page-break-after: always; }
+.sheet:last-child { page-break-after: auto; }
+
+.handout-head {
+  border-bottom: 2.5pt solid #000;
+  padding-bottom: 5pt;
+  margin-bottom: 12pt;
+}
+.handout-head .course {
+  font-family: Helvetica, Arial, sans-serif;
+  font-size: 8pt;
+  font-weight: bold;
+  letter-spacing: 1.2pt;
+  text-transform: uppercase;
+  margin: 0 0 3pt;
+}
+.handout-head h1 {
+  font-family: Helvetica, Arial, sans-serif;
+  font-size: 17pt;
+  margin: 0 0 3pt;
+  line-height: 1.15;
+}
+.handout-head .meta {
+  font-family: Helvetica, Arial, sans-serif;
+  font-size: 8.5pt;
+  color: var(--psoft);
+  margin: 0;
+}
+
+/* name / date / class line for the student to fill in */
+.nameline {
+  display: flex;
+  gap: 14pt;
+  margin: 0 0 14pt;
+  font-family: Helvetica, Arial, sans-serif;
+  font-size: 9pt;
+}
+.nameline span {
+  flex: 1;
+  border-bottom: 0.75pt solid #000;
+  padding-bottom: 2pt;
+}
+
+h2 {
+  font-family: Helvetica, Arial, sans-serif;
+  font-size: 12pt;
+  margin: 16pt 0 6pt;
+  padding-bottom: 2.5pt;
+  border-bottom: 1pt solid #000;
+  page-break-after: avoid;
+}
+h3 {
+  font-family: Helvetica, Arial, sans-serif;
+  font-size: 10.5pt;
+  margin: 12pt 0 4pt;
+  page-break-after: avoid;
+}
+h4 {
+  font-family: Helvetica, Arial, sans-serif;
+  font-size: 9.5pt;
+  margin: 10pt 0 3pt;
+  page-break-after: avoid;
+}
+
+p, li { orphans: 3; widows: 3; }
+p { margin: 0 0 7pt; }
+ul, ol { margin: 0 0 8pt; padding-left: 18pt; }
+li { margin-bottom: 3pt; }
+strong { font-weight: bold; }
+hr { border: 0; border-top: 0.75pt solid var(--prule); margin: 12pt 0; }
+a { color: #000; text-decoration: none; }
+a::after { content: ""; }       /* do not print URLs after links: too noisy */
+
+/* ---------- code on paper ----------
+   The critical rule is pre-wrap. A clipped code block makes a handout useless,
+   and that is the single most common defect in printed programming worksheets. */
+pre, code, kbd {
+  font-family: "DejaVu Sans Mono", Consolas, "Courier New", monospace;
+}
+pre {
+  margin: 6pt 0 9pt;
+  padding: 6pt 8pt;
+  background: var(--pbg);
+  border: 0.75pt solid var(--prule);
+  border-left: 2.5pt solid #000;
+  font-size: 8.5pt;
+  line-height: 1.45;
+  white-space: pre-wrap;          /* WRAP, never clip */
+  overflow-wrap: break-word;
+  page-break-inside: avoid;       /* keep a snippet whole if it can be */
+  tab-size: 2;
+}
+/* A long snippet is allowed to break rather than leave half a blank page. */
+pre.long { page-break-inside: auto; }
+code { font-size: 9pt; background: var(--pbg); padding: 0.5pt 2pt; }
+pre code { font-size: inherit; background: none; padding: 0; }
+
+/* ---------- tables ---------- */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 6pt 0 10pt;
+  font-size: 9pt;
+  page-break-inside: avoid;
+}
+th, td {
+  border: 0.75pt solid var(--prule);
+  padding: 3.5pt 5pt;
+  text-align: left;
+  vertical-align: top;
+}
+th { background: var(--pbg); font-family: Helvetica, Arial, sans-serif; font-size: 8.5pt; }
+
+/* ---------- cheat-sheet layout: two columns on one side ---------- */
+.cheat { column-count: 2; column-gap: 14pt; column-rule: 0.75pt solid var(--prule); }
+.cheat h3 { margin-top: 0; break-after: avoid; }
+.cheat > * { break-inside: avoid; }
+
+/* ---------- question furniture ---------- */
+.q {
+  margin: 0 0 10pt;
+  page-break-inside: avoid;
+}
+.q-num {
+  font-family: Helvetica, Arial, sans-serif;
+  font-weight: bold;
+  font-size: 9.5pt;
+}
+.marks {
+  float: right;
+  font-family: Helvetica, Arial, sans-serif;
+  font-size: 8pt;
+  color: var(--psoft);
+}
+
+/* ruled answer space - the number of lines is set per question */
+.lines { margin: 4pt 0 10pt; }
+.lines > i {
+  display: block;
+  border-bottom: 0.5pt solid #999;
+  height: 15pt;
+}
+.lines.wide > i { height: 19pt; }
+
+/* an empty box for diagrams and sketches */
+.sketchbox {
+  border: 0.75pt solid #000;
+  height: 42mm;
+  margin: 5pt 0 10pt;
+  page-break-inside: avoid;
+}
+.sketchbox.tall { height: 68mm; }
+.sketchbox::before {
+  content: attr(data-label);
+  display: block;
+  font-family: Helvetica, Arial, sans-serif;
+  font-size: 7.5pt;
+  color: var(--psoft);
+  padding: 2pt 4pt;
+}
+
+/* checkbox list for build checkpoints - students tick these off */
+.checkpoints { list-style: none; padding-left: 0; }
+.checkpoints li {
+  padding-left: 16pt;
+  position: relative;
+  margin-bottom: 4pt;
+}
+.checkpoints li::before {
+  content: "";
+  position: absolute;
+  left: 0; top: 2.5pt;
+  width: 8pt; height: 8pt;
+  border: 0.75pt solid #000;
+}
+
+/* callouts, distinguished by RULE WEIGHT and a text label, not by colour,
+   so they survive a black-and-white photocopier */
+blockquote, .note {
+  margin: 7pt 0;
+  padding: 5pt 9pt;
+  border-left: 2.5pt solid #000;
+  background: var(--pbg);
+  font-size: 9.5pt;
+  page-break-inside: avoid;
+}
+.note-label {
+  display: block;
+  font-family: Helvetica, Arial, sans-serif;
+  font-size: 7.5pt;
+  font-weight: bold;
+  letter-spacing: 0.8pt;
+  text-transform: uppercase;
+  margin-bottom: 2pt;
+}
+
+/* a "this is open-ended" marker for the design challenge */
+.open {
+  border: 0.75pt dashed #000;
+  background: none;
+  padding: 6pt 9pt;
+  margin: 7pt 0;
+  page-break-inside: avoid;
+}
+
+.footer-note {
+  margin-top: 14pt;
+  padding-top: 5pt;
+  border-top: 0.75pt solid var(--prule);
+  font-family: Helvetica, Arial, sans-serif;
+  font-size: 7.5pt;
+  color: var(--psoft);
+}
+
+.pagebreak { page-break-before: always; }
+.nobreak { page-break-inside: avoid; }
+
+/* Anything screen-only is hidden on paper. */
+.screen-only, .anim, .theme-toggle, nav, .lesson-nav, .breadcrumb { display: none !important; }

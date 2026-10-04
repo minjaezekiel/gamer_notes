@@ -1,0 +1,230 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Screen Coordinates</title>
+<meta name="description" content="On a screen, y points DOWN. See why 'up' means subtracting, and why your first jump went the wrong way.">
+<link rel="stylesheet" href="../css/notes.css">
+<link rel="stylesheet" href="../css/code.css">
+</head>
+<body>
+<div class="wrap">
+
+  <p class="breadcrumb"><a href="index.html">&larr; All visualizers</a></p>
+
+  <header class="lesson-head">
+    <p class="kicker">Concept 3 &middot; Works for JavaScript, Python and C++</p>
+    <h1>Screen Coordinates: Y Points Down</h1>
+    <p class="meta">The single most common &ldquo;why is it going the wrong way?&rdquo; bug. Used in: web L2 &middot; python L2 &middot; c++ L3</p>
+  </header>
+
+  <p class="lede">In maths class, the y axis points up and zero is in the middle. On a computer screen,
+  the y axis points <strong>down</strong> and zero is in the top-left corner. Nobody tells you this,
+  and then your first jump sends the player into the floor.</p>
+
+  <div class="look-for">
+    <strong>What to look for</strong>
+    Drag the orange dot. Watch both readouts at once. Move it <em>upwards</em> and notice that the
+    screen&rsquo;s <code>y</code> gets <strong>smaller</strong> while the maths <code>y</code> gets
+    bigger. Then press Play: the ball is told <code>y = y - 90 * dt</code>, and it rises.
+  </div>
+
+  <div id="coordDemo"></div>
+
+  <h2>So how do you move things?</h2>
+
+  <div class="table-scroll">
+  <table>
+    <thead><tr><th>You want&hellip;</th><th>You write&hellip;</th><th>Because&hellip;</th></tr></thead>
+    <tbody>
+      <tr><td>move right</td><td><code>x = x + speed</code></td><td>x grows to the right, as you would expect</td></tr>
+      <tr><td>move left</td><td><code>x = x - speed</code></td><td>same as maths class</td></tr>
+      <tr><td><strong>move up</strong></td><td><code>y = y - speed</code></td><td><strong>y grows downwards, so up is minus</strong></td></tr>
+      <tr><td><strong>move down</strong></td><td><code>y = y + speed</code></td><td>down is the direction y grows</td></tr>
+      <tr><td>jump</td><td><code>vy = -400</code></td><td>a big negative y speed launches the player upward</td></tr>
+      <tr><td>gravity</td><td><code>vy = vy + 900 * dt</code></td><td>gravity pulls down, so it <em>adds</em> to vy</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <div class="box box-warn">
+    <span class="box-label">Why is it like this?</span>
+    <p>It is a leftover from how old screens were built. A cathode-ray television drew the picture
+    with a beam that swept across the top row first, then the next row down, and so on to the bottom.
+    So &ldquo;row 0&rdquo; meant the first row drawn, which is the top one. Every graphics system since
+    has kept that numbering, and almost all of them still do: the web canvas, Python&rsquo;s tkinter,
+    SDL, raylib, and your phone.</p>
+    <p>One famous exception is Python&rsquo;s <code>turtle</code>, which deliberately uses maths-class
+    coordinates with y pointing up, because it was built for teaching. You will meet both in this
+    course, which is good: it forces you to always ask which convention you are in.</p>
+  </div>
+
+  <div class="box box-bug">
+    <span class="box-label">Find the bug</span>
+    <p>A student writes a jump and reports that the player &ldquo;falls through the floor instantly&rdquo;:</p>
+    <div class="code" data-lang="js" data-numbers="off">
+<pre><code>if (keyPressed === "space") {
+  player.vy = 400;          // jump!
+}
+player.vy = player.vy + 900 * dt;   // gravity
+player.y  = player.y + player.vy * dt;</code></pre>
+    </div>
+    <p>What one character needs to change, and why does the player end up going down <em>faster</em>
+    than if they had not jumped at all?</p>
+  </div>
+
+  <div class="box box-think">
+    <span class="box-label">Think like an engineer</span>
+    <p>Suppose you are building a game where the maths really is easier with y pointing up &mdash; say
+    a physics sandbox, or a graph-plotting game. You have two options:</p>
+    <ol>
+      <li>Store everything in screen coordinates and remember to flip signs everywhere.</li>
+      <li>Store everything in maths coordinates and flip <em>once</em>, in the drawing code.</li>
+    </ol>
+    <p>Which would you choose, and what exactly would the second one cost you? This is a real design
+    decision that engine authors argue about. Write down the one function you would need for option 2.</p>
+  </div>
+
+  <div class="box box-vocab">
+    <span class="box-label">Vocabulary</span>
+    <ul>
+      <li><strong>Origin</strong> &mdash; the point where x and y are both zero. On a screen it is the
+      top-left corner.</li>
+      <li><strong>Coordinate system</strong> &mdash; an agreement about where zero is and which way the
+      numbers grow.</li>
+      <li><strong>Pixel</strong> &mdash; one dot of the screen. Screen coordinates are counted in pixels.</li>
+      <li><strong>Velocity</strong> (<code>vy</code>) &mdash; speed <em>with a direction</em>. Negative
+      vy means moving up.</li>
+    </ul>
+  </div>
+
+  <p class="breadcrumb"><a href="index.html">&larr; All visualizers</a></p>
+</div>
+
+<script src="../js/page.js"></script>
+<script src="../js/anim.js"></script>
+<script src="../js/codeblock.js"></script>
+<script>
+/* ---------------------------------------------------------------------------
+   Two grids side by side: the one from maths class, and the one on a screen.
+
+   The teaching move is that there is ONE draggable dot, shown in both panels at
+   once. A student drags it upward and sees one number go up while the other goes
+   down. That is far more convincing than being told about it.
+   ------------------------------------------------------------------------ */
+(function () {
+  var CELL = 30;                 // grid square size, in logical pixels
+  var COLS = 12, ROWS = 9;       // grid squares per panel
+  var PW = COLS * CELL, PH = ROWS * CELL;
+  var MX = 46,  MY = 96;         // maths panel top-left
+  var SX = 492, SY = 96;         // screen panel top-left
+
+  Anim.sketch({
+    mount: '#coordDemo',
+    width: 900, height: 430,
+    fps: 60,
+    controls: ['play', 'step', 'reset'],
+    showFrameCount: false,
+
+    state: function () {
+      return { ballY: PH - 40, ballVY: -90, rising: true };
+    },
+
+    update: function (s, dt) {
+      // "Up" on a screen means SUBTRACTING from y. This one line is the lesson.
+      s.ballY += s.ballVY * dt;
+      if (s.ballY < 24) { s.ballY = 24; s.ballVY = 90; s.rising = false; }
+      if (s.ballY > PH - 40) { s.ballY = PH - 40; s.ballVY = -90; s.rising = true; }
+    },
+
+    draw: function (s, g, api) {
+      var T = g.color;
+      g.clear();
+
+      /* ---- the draggable dot, registered in the SCREEN panel ---- */
+      var h = api.handle('pt', SX + 7 * CELL, SY + 3 * CELL,
+        { label: 'drag me', color: T.accent2, hidden: true });
+      // Keep it on the grid.
+      h.x = Math.max(SX, Math.min(SX + PW, h.x));
+      h.y = Math.max(SY, Math.min(SY + PH, h.y));
+
+      // Convert the dot's canvas position into each coordinate system.
+      // Snap to the nearest grid square, then label each square as 30 pixels.
+      var screenX = Math.round((h.x - SX) / CELL) * 30;
+      var screenY = Math.round((h.y - SY) / CELL) * 30;
+      var mathsX = screenX - (COLS / 2) * 30;      // origin in the middle
+      var mathsY = (ROWS / 2) * 30 - screenY;      // and y flipped
+
+      /* ================= MATHS PANEL ================= */
+      panel(g, T, MX, MY, 'WHAT MATHS CLASS TAUGHT YOU', '(0, 0) in the middle · y goes UP');
+      grid(g, T, MX, MY);
+      // axes through the middle
+      var cx = MX + (COLS / 2) * CELL, cy = MY + (ROWS / 2) * CELL;
+      g.line(MX, cy, MX + PW, cy, T.muted, 2);
+      g.line(cx, MY, cx, MY + PH, T.muted, 2);
+      g.arrow(cx, MY + 14, cx, MY - 6, T.good, 3);          // y arrow points UP
+      g.arrow(MX + PW - 14, cy, MX + PW + 8, cy, T.accent, 3);
+      g.text('+y', cx + 9, MY + 2, { size: 14, bold: true, color: T.good });
+      g.text('+x', MX + PW + 2, cy - 9, { size: 14, bold: true, color: T.accent });
+      g.text('0', cx - 12, cy + 16, { size: 12, color: T.muted });
+      // the mirrored dot
+      var mdx = cx + mathsX, mdy = cy - mathsY;
+      g.circle(mdx, mdy, 10, T.accent2);
+      g.dashed(cx, mdy, mdx, mdy, T.accent2, 1.5, [3, 3]);
+      g.dashed(mdx, cy, mdx, mdy, T.accent2, 1.5, [3, 3]);
+      g.text('(' + mathsX + ', ' + mathsY + ')', MX + PW / 2, MY + PH + 34,
+        { size: 20, bold: true, align: 'center', color: T.accent2, mono: true });
+
+      /* ================= SCREEN PANEL ================= */
+      panel(g, T, SX, SY, 'WHAT A SCREEN ACTUALLY DOES', '(0, 0) top-left · y goes DOWN');
+      grid(g, T, SX, SY);
+      g.line(SX, SY, SX + PW, SY, T.muted, 2);
+      g.line(SX, SY, SX, SY + PH, T.muted, 2);
+      g.arrow(SX, SY + PH - 16, SX, SY + PH + 8, T.bad, 3);   // y arrow points DOWN
+      g.arrow(SX + PW - 14, SY, SX + PW + 8, SY, T.accent, 3);
+      g.text('+y', SX - 26, SY + PH + 4, { size: 14, bold: true, color: T.bad });
+      g.text('+x', SX + PW + 2, SY - 9, { size: 14, bold: true, color: T.accent });
+      g.text('0,0', SX + 4, SY - 8, { size: 12, color: T.muted });
+      g.dashed(SX, h.y, h.x, h.y, T.accent2, 1.5, [3, 3]);
+      g.dashed(h.x, SY, h.x, h.y, T.accent2, 1.5, [3, 3]);
+      // Draw the real handle last so it sits on top.
+      api.handle('pt', h.x, h.y, { label: 'drag me', color: T.accent2 });
+      g.text('(' + screenX + ', ' + screenY + ')', SX + PW / 2, SY + PH + 34,
+        { size: 20, bold: true, align: 'center', color: T.accent2, mono: true });
+
+      /* ---- the rising ball, proving "up is minus" ---- */
+      var bx = SX + PW + 26;
+      g.text('y = y - 90*dt', bx - 4, SY + 2, { size: 12, bold: true, color: T.ink, mono: true });
+      g.line(bx + 20, SY + 14, bx + 20, SY + PH, T.grid, 2);
+      g.circle(bx + 20, SY + s.ballY, 11, s.rising ? T.good : T.bad);
+      g.arrow(bx + 44, SY + s.ballY + (s.rising ? 16 : -16),
+              bx + 44, SY + s.ballY + (s.rising ? -14 : 14),
+              s.rising ? T.good : T.bad, 2.5);
+
+      /* ---- the conversion, stated once ---- */
+      g.text('to go from maths to screen:  screenY = ' + ((ROWS / 2) * 30) + ' − mathsY',
+        450, 414, { size: 15, bold: true, align: 'center', color: T.muted, mono: true });
+
+      api.say(s.rising
+        ? 'The ball is <strong>rising</strong>, and its <code>y</code> is <strong>getting smaller</strong> (' +
+          Math.round(s.ballY) + '). Up really is minus.'
+        : 'The ball is <strong>falling</strong>, and its <code>y</code> is <strong>getting bigger</strong> (' +
+          Math.round(s.ballY) + ').');
+    }
+  });
+
+  function panel(g, T, x, y, title, sub) {
+    g.text(title, x, y - 32, { size: 14, bold: true, color: T.ink });
+    g.text(sub, x, y - 14, { size: 12.5, color: T.muted });
+    g.rect(x, y, PW, PH, T.panel);
+  }
+
+  function grid(g, T, x, y) {
+    for (var c = 0; c <= COLS; c++) { g.line(x + c * CELL, y, x + c * CELL, y + PH, T.grid, 1); }
+    for (var r = 0; r <= ROWS; r++) { g.line(x, y + r * CELL, x + PW, y + r * CELL, T.grid, 1); }
+  }
+}());
+</script>
+</body>
+</html>

@@ -1,0 +1,270 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Delta Time</title>
+<meta name="description" content="Race two balls at different frame rates to see why moving things per-frame breaks your game on a different computer.">
+<link rel="stylesheet" href="../css/notes.css">
+<link rel="stylesheet" href="../css/code.css">
+</head>
+<body>
+<div class="wrap">
+
+  <p class="breadcrumb"><a href="index.html">&larr; All visualizers</a></p>
+
+  <header class="lesson-head">
+    <p class="kicker">Concept 5 &middot; Works for JavaScript, Python and C++</p>
+    <h1>Delta Time</h1>
+    <p class="meta">Why your game runs at double speed on your friend&rsquo;s laptop. Used in: web L2 &middot; python L3 &middot; c++ L3</p>
+  </header>
+
+  <p class="lede">Not every computer runs your game at the same speed. If you move things
+  &ldquo;a bit each frame&rdquo;, then a faster computer gives the player a faster game &mdash; which is a
+  bug, not a feature.</p>
+
+  <div class="look-for">
+    <strong>What to look for</strong>
+    Both balls are told to cross the track at the same speed. Press Play with the frame rate at
+    <strong>60</strong> and they tie. Now drag the frame-rate slider to <strong>20</strong> and press
+    Reset, then Play. The top ball crawls. <em>Nobody changed its speed setting.</em> The bottom ball
+    does not care, because it asks how much <em>time</em> passed rather than counting frames.
+  </div>
+
+  <div id="dtDemo"></div>
+
+  <h2>The two lines of code that differ</h2>
+
+  <div class="cols cols-2">
+    <div>
+      <p><strong>Counting frames &mdash; breaks</strong></p>
+      <div class="code" data-lang="js" data-numbers="off">
+<pre><code>// "move 5 pixels every frame"
+ball.x = ball.x + 5;</code></pre>
+      </div>
+      <p>Reads as 5 pixels per <em>frame</em>. At 60 fps that is 300 pixels a second. At 20 fps it is
+      100. The speed of the game is now decided by the computer, not by you.</p>
+    </div>
+    <div>
+      <p><strong>Using time &mdash; works</strong></p>
+      <div class="code" data-lang="js" data-numbers="off">
+<pre><code>// "move 300 pixels every second"
+ball.x = ball.x + 300 * dt;</code></pre>
+      </div>
+      <p>Reads as 300 pixels per <em>second</em>. <code>dt</code> is how many seconds the last frame
+      took. A slow computer gets a bigger <code>dt</code> and so takes bigger steps. Same result.</p>
+    </div>
+  </div>
+
+  <div class="box box-maths">
+    <span class="box-label">The maths you just used</span>
+    <p>This is the distance formula from science class, and nothing more:</p>
+    <p style="text-align:center;font-size:1.25em"><strong>distance = speed &times; time</strong></p>
+    <p>A frame is a very short amount of time. If the last frame took <code>dt</code> seconds and
+    you are going <code>speed</code> pixels per second, you should move <code>speed &times; dt</code>
+    pixels. At 60 fps, <code>dt</code> is about <code>0.0167</code> seconds, so
+    <code>300 &times; 0.0167 &asymp; 5</code> pixels. That is where the 5 came from in the first
+    place &mdash; but it only works on a 60 fps machine.</p>
+  </div>
+
+  <div class="box box-warn">
+    <span class="box-label">Where delta time is NOT enough</span>
+    <p>Delta time is the right fix for a beginner game, and you should use it everywhere. But it is
+    not perfect. If one frame takes a very long time &mdash; say the laptop sleeps, or a tab is in
+    the background &mdash; then <code>dt</code> becomes huge and a fast object can jump straight
+    <em>through</em> a wall without ever overlapping it. That is called <strong>tunnelling</strong>,
+    and the real fix is the <em>fixed timestep</em>, which is the first lesson of the advanced level.</p>
+  </div>
+
+  <div class="box box-think">
+    <span class="box-label">Think like an engineer</span>
+    <p>Delta time makes movement fair on any machine. Now think about what else in a game is measured
+    in frames by accident:</p>
+    <ul>
+      <li>An enemy that fires &ldquo;every 30 frames&rdquo;.</li>
+      <li>An explosion animation that advances one picture per frame.</li>
+      <li>A countdown timer that does <code>seconds = seconds - 1</code> each frame.</li>
+    </ul>
+    <p>Pick one and write down what the player would notice on a very fast computer. Then write the
+    fixed version. Is there any case where counting frames really <em>is</em> the correct choice?</p>
+  </div>
+
+  <div class="box box-vocab">
+    <span class="box-label">Vocabulary</span>
+    <ul>
+      <li><strong>Delta time</strong> (<code>dt</code>) &mdash; how many seconds the previous frame
+      took. &ldquo;Delta&rdquo; is the mathematician&rsquo;s word for &ldquo;the change in&rdquo;.</li>
+      <li><strong>Frame rate</strong> &mdash; frames per second, <em>fps</em>.</li>
+      <li><strong>Frame-rate dependent</strong> &mdash; a bug where the game behaves differently
+      depending on how fast the computer is.</li>
+      <li><strong>Tunnelling</strong> &mdash; passing straight through a wall because one step was
+      too big.</li>
+    </ul>
+  </div>
+
+  <p class="breadcrumb"><a href="index.html">&larr; All visualizers</a></p>
+</div>
+
+<script src="../js/page.js"></script>
+<script src="../js/anim.js"></script>
+<script src="../js/codeblock.js"></script>
+<script>
+/* ---------------------------------------------------------------------------
+   The delta-time race.
+
+   HOW THIS IS SIMULATED
+   anim.js ticks this sketch at a steady 120 "real time" steps a second. Inside
+   update() we keep our own accumulator and only run a GAME frame when enough
+   simulated time has passed for the chosen frame rate. So dragging the slider to
+   20 fps really does give the game 20 frames a second while real time keeps
+   flowing at the same rate - which is exactly the situation on a slow laptop.
+   ------------------------------------------------------------------------ */
+(function () {
+  var START_X = 118;
+  var FINISH_X = 846;
+  var PER_FRAME  = 5;     // pixels per FRAME   - the frame-rate dependent way
+  var PER_SECOND = 300;   // pixels per SECOND  - the delta time way
+  // These two agree only at 60 fps, because 5 x 60 = 300. That coincidence is
+  // why the bug hides on the machine the game was written on.
+
+  var LANE_A_Y = 108, LANE_B_Y = 248, LANE_H = 64, R = 20;
+
+  var fpsSlider;
+
+  var sk = Anim.sketch({
+    mount: '#dtDemo',
+    width: 900, height: 400,
+    fps: 120,
+    controls: ['play', 'step', 'reset', 'speed'],
+    showFrameCount: false,
+
+    state: function () {
+      return {
+        realTime: 0,
+        acc: 0,
+        gameFrames: 0,
+        aX: START_X, bX: START_X,
+        aDone: null, bDone: null      // real seconds taken to finish
+      };
+    },
+
+    update: function (s, dt) {
+      var fps = fpsSlider ? fpsSlider.value : 60;
+      var frameLength = 1 / fps;      // how long ONE game frame lasts, in seconds
+
+      s.realTime += dt;
+      s.acc += dt;
+
+      // Run however many whole game frames fit into the time that has passed.
+      var guard = 0;
+      while (s.acc >= frameLength && guard < 200) {
+        s.acc -= frameLength;
+        s.gameFrames += 1;
+        guard += 1;
+
+        // Ball A counts frames. It has no idea how long a frame lasted.
+        if (s.aX < FINISH_X) {
+          s.aX += PER_FRAME;
+          if (s.aX >= FINISH_X) { s.aX = FINISH_X; s.aDone = s.realTime; }
+        }
+
+        // Ball B multiplies its speed by the length of the frame.
+        if (s.bX < FINISH_X) {
+          s.bX += PER_SECOND * frameLength;
+          if (s.bX >= FINISH_X) { s.bX = FINISH_X; s.bDone = s.realTime; }
+        }
+      }
+    },
+
+    draw: function (s, g, api) {
+      var T = g.color;
+      var fps = fpsSlider ? fpsSlider.value : 60;
+      g.clear();
+
+      g.text('THE SAME RACE, RUN AT ' + fps + ' FRAMES PER SECOND', 24, 32,
+        { size: 16, bold: true, color: T.ink });
+      g.text('real time: ' + s.realTime.toFixed(2) + ' s', 876, 32,
+        { size: 15, align: 'right', color: T.muted, mono: true });
+      g.text('game frames drawn: ' + s.gameFrames, 876, 54,
+        { size: 13, align: 'right', color: T.muted, mono: true });
+
+      drawLane(g, T, s, LANE_A_Y, {
+        title: 'x = x + 5   (per FRAME)',
+        sub: 'effective speed: ' + (PER_FRAME * fps) + ' px per second',
+        x: s.aX,
+        done: s.aDone,
+        colour: (fps === 60 ? T.good : T.bad),
+        verdict: fps === 60 ? 'correct, by luck' : (fps < 60 ? 'TOO SLOW' : 'TOO FAST')
+      });
+
+      drawLane(g, T, s, LANE_B_Y, {
+        title: 'x = x + 300 * dt   (per SECOND)',
+        sub: 'effective speed: 300 px per second, always',
+        x: s.bX,
+        done: s.bDone,
+        colour: T.good,
+        verdict: 'correct'
+      });
+
+      /* The explanatory caption, rewritten as the race proceeds. */
+      if (s.aDone && s.bDone) {
+        var gap = Math.abs(s.aDone - s.bDone);
+        api.say(gap < 0.05
+          ? 'Both balls finished together, because at 60 fps <code>5</code> pixels per frame ' +
+            'happens to equal <code>300</code> pixels per second. <strong>Change the frame rate ' +
+            'and this agreement falls apart.</strong>'
+          : 'Finished <strong>' + gap.toFixed(2) + ' seconds apart</strong>. Same intended speed, ' +
+            'same code running, different computer. Only the top ball noticed.');
+      } else if (s.realTime > 0) {
+        api.say('Watch the gap open up. Neither ball’s speed setting was touched — only the ' +
+                'frame rate changed.');
+      }
+    },
+
+    onReset: function (s, api) {
+      api.say('Set a frame rate, then press Play. Both balls are <em>supposed</em> to cross at the ' +
+              'same speed.');
+    }
+  });
+
+  function drawLane(g, T, s, y, o) {
+    // the track
+    g.rect(START_X - 14, y, FINISH_X - START_X + 42, LANE_H, T.panel);
+    g.strokeRect(START_X - 14, y, FINISH_X - START_X + 42, LANE_H, T.grid, 1);
+
+    // start and finish markers
+    g.dashed(START_X, y + 4, START_X, y + LANE_H - 4, T.muted, 1.5, [4, 4]);
+    g.line(FINISH_X, y + 2, FINISH_X, y + LANE_H - 2, T.ink, 3);
+    g.text('FINISH', FINISH_X + 8, y + LANE_H / 2 + 5,
+      { size: 11, bold: true, color: T.muted });
+
+    // labels above the lane
+    g.text(o.title, 24, y - 26, { size: 15, bold: true, color: T.ink, mono: true });
+    g.text(o.sub, 24, y - 8, { size: 13, color: T.muted });
+
+    // the ball, with a trail so distance covered is visible at a glance
+    g.ctx.save();
+    g.ctx.globalAlpha = 0.18;
+    g.rect(START_X, y + LANE_H / 2 - 3, o.x - START_X, 6, o.colour);
+    g.ctx.restore();
+    g.circle(o.x, y + LANE_H / 2, R, o.colour);
+
+    // verdict badge, and the finishing time once it is in
+    var vx = FINISH_X - 2;
+    g.badge(o.verdict, vx, y - 6,
+      { size: 12, bold: true, align: 'center', bg: o.colour, color: T.bg, border: o.colour });
+    if (o.done != null) {
+      g.text('took ' + o.done.toFixed(2) + ' s', o.x, y + LANE_H + 20,
+        { size: 13, bold: true, align: 'center', color: o.colour, mono: true });
+    }
+  }
+
+  /* Build the frame-rate control. It is created after the sketch so that it sits
+     in the extras row underneath the standard play/step/reset buttons. */
+  /* Created after the sketch so it lands in the extras row beneath the standard
+     controls. update() reads it lazily, falling back to 60 fps for frame one. */
+  fpsSlider = sk.slider('Computer speed (frames per second)', 10, 120, 60, 10);
+}());
+</script>
+</body>
+</html>

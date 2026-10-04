@@ -1,0 +1,119 @@
+<!doctype html>
+<!-- ==========================================================================
+     02 - Circle collision, with Pythagoras drawn on screen
+     Lesson 4, Web Games, Beginner
+
+     WHAT THIS SHOWS:  distance = sqrt(dx*dx + dy*dy), and the right-angled
+                       triangle it comes from.
+     RUN IT:           Double-click, then drag the orange circle.
+     TRY THIS:         Watch the two numbers at the bottom - distance, and
+                       r1 + r2. The circles touch exactly when the first
+                       becomes smaller than the second.
+     ========================================================================== -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>02 - Circle distance</title>
+<style>
+  body { background:#f0f0f0; font-family:system-ui, sans-serif;
+         display:flex; flex-direction:column; align-items:center; padding:24px; }
+  canvas { border:2px solid #888; }
+  p { max-width:620px; }
+</style>
+</head>
+<body>
+
+<h1>02 - Two circles, one comparison</h1>
+<canvas id="game" width="620" height="420"></canvas>
+<p>Drag the orange circle. The grey triangle is the one from your maths book.</p>
+
+<script>
+  const canvas = document.getElementById("game");
+  const ctx = canvas.getContext("2d");
+
+  const a = { x: 220, y: 180, radius: 60 };
+  const b = { x: 400, y: 260, radius: 45 };
+
+  // ---- THE TEST --------------------------------------------------------
+  function circlesOverlap(c1, c2) {
+    const dx = c2.x - c1.x;          // how far apart across
+    const dy = c2.y - c1.y;          // how far apart down
+    const distance = Math.sqrt(dx * dx + dy * dy);    // Pythagoras
+    return distance < c1.radius + c2.radius;
+  }
+
+  let dragging = false;
+  canvas.addEventListener("mousedown", function () { dragging = true; });
+  window.addEventListener("mouseup", function () { dragging = false; });
+  canvas.addEventListener("mousemove", function (event) {
+    if (!dragging) { return; }
+    const bounds = canvas.getBoundingClientRect();
+    b.x = event.clientX - bounds.left;
+    b.y = event.clientY - bounds.top;
+  });
+
+  function render() {
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const distance = Math.sqrt(dx * dx + dy * dy);
+    const limit = a.radius + b.radius;
+    const hit = distance < limit;
+
+    ctx.fillStyle = "#222";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // the right-angled triangle
+    ctx.fillStyle = "rgba(255,255,255,0.07)";
+    ctx.beginPath();
+    ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, a.y); ctx.lineTo(b.x, b.y);
+    ctx.closePath(); ctx.fill();
+
+    ctx.strokeStyle = "#666"; ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, a.y); ctx.lineTo(b.x, b.y);
+    ctx.stroke();
+
+    // the centre-to-centre line: this IS the distance
+    ctx.strokeStyle = hit ? "#ff6b6b" : "#4a9eff";
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+
+    ctx.fillStyle = "rgba(74,158,255,0.3)";
+    circle(a.x, a.y, a.radius, true);
+    ctx.fillStyle = "rgba(255,146,70,0.3)";
+    circle(b.x, b.y, b.radius, true);
+    ctx.strokeStyle = "#4a9eff"; circle(a.x, a.y, a.radius, false);
+    ctx.strokeStyle = "#ff9246"; circle(b.x, b.y, b.radius, false);
+
+    ctx.font = "14px ui-monospace, Menlo, monospace";
+    ctx.fillStyle = "#aaa";
+    ctx.fillText("dx = " + Math.round(dx), (a.x + b.x) / 2 - 20, a.y - 10);
+    ctx.fillText("dy = " + Math.round(dy), b.x + 10, (a.y + b.y) / 2);
+
+    ctx.font = "16px ui-monospace, Menlo, monospace";
+    ctx.fillStyle = "#ddd";
+    ctx.fillText("distance = sqrt(dx*dx + dy*dy) = " + distance.toFixed(1), 20, 360);
+    ctx.fillText("r1 + r2                        = " + limit.toFixed(1), 20, 384);
+    ctx.fillStyle = hit ? "#ff6b6b" : "#777";
+    ctx.font = "bold 20px system-ui, sans-serif";
+    ctx.fillText(hit ? "TOUCHING" : "not touching", 430, 384);
+
+    ctx.font = "12px system-ui, sans-serif";
+    ctx.fillStyle = "#666";
+    ctx.fillText("circlesOverlap() agrees: " + circlesOverlap(a, b), 20, 406);
+  }
+
+  function circle(x, y, r, fill) {
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    if (fill) { ctx.fill(); } else { ctx.stroke(); }
+  }
+
+  function frame() { render(); requestAnimationFrame(frame); }
+  frame();
+</script>
+
+</body>
+</html>

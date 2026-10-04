@@ -1,0 +1,84 @@
+<!doctype html>
+<!-- ==========================================================================
+     02 - Sound with no sound files
+     Lesson 5, Web Games, Beginner
+
+     WHAT THIS SHOWS:  Generating tones with the Web Audio API, so your game
+                       stays a single file with nothing to download.
+     RUN IT:           Double-click, then click the buttons.
+     CHANGE ME FIRST:  The frequency numbers. 440 is the A above middle C.
+                       Double a frequency and you go up one octave.
+     IMPORTANT:        Browsers refuse to play any sound until the user has
+                       interacted with the page. That is why we create the
+                       AudioContext lazily, on the first sound, rather than when
+                       the page loads. It is a deliberate browser policy that
+                       exists because of autoplaying adverts.
+     ========================================================================== -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>02 - Sound from nothing</title>
+<style>
+  body { background:#f0f0f0; font-family:system-ui, sans-serif;
+         display:flex; flex-direction:column; align-items:center; padding:24px; }
+  canvas { border:2px solid #888; }
+  p { max-width:620px; }
+  button { font: inherit; padding: 10px 18px; margin: 4px; }
+  .row { margin-top: 14px; }
+</style>
+</head>
+<body>
+
+<h1>02 - Sound, with no sound files</h1>
+
+<div class="row">
+  <button id="paddle">Paddle hit (440 Hz, 0.06s)</button>
+  <button id="wall">Wall hit (260 Hz, 0.04s)</button>
+  <button id="score">Score (150 Hz, 0.25s)</button>
+</div>
+<div class="row">
+  <button id="noFade">Same beep with NO volume fade - listen for the click</button>
+</div>
+
+<p>Different pitches for different events means a player can tell what happened
+without looking at the screen. That is worth more than it sounds.</p>
+
+<script>
+  // ONE AudioContext for the whole game. Creating a new one per sound leaks
+  // memory and browsers limit how many you may have.
+  let audio = null;
+
+  function beep(frequency, duration, fade) {
+    if (!audio) { audio = new AudioContext(); }
+
+    const oscillator = audio.createOscillator();   // makes a tone
+    const volume = audio.createGain();             // controls loudness
+
+    oscillator.frequency.value = frequency;        // pitch, in hertz
+    oscillator.type = "square";                    // square = retro bleep
+
+    if (fade) {
+      // Slide the volume down to almost nothing over the duration. Without
+      // this you hear a CLICK at the end, because the wave is cut off
+      // mid-cycle. (It cannot ramp to exactly 0 - exponential curves never
+      // reach zero - so we use a tiny number instead.)
+      volume.gain.setValueAtTime(0.08, audio.currentTime);
+      volume.gain.exponentialRampToValueAtTime(0.0001, audio.currentTime + duration);
+    } else {
+      volume.gain.value = 0.08;
+    }
+
+    oscillator.connect(volume);        // tone -> volume control
+    volume.connect(audio.destination); // volume control -> speakers
+    oscillator.start();
+    oscillator.stop(audio.currentTime + duration);
+  }
+
+  document.getElementById("paddle").onclick = function () { beep(440, 0.06, true); };
+  document.getElementById("wall").onclick   = function () { beep(260, 0.04, true); };
+  document.getElementById("score").onclick  = function () { beep(150, 0.25, true); };
+  document.getElementById("noFade").onclick = function () { beep(440, 0.25, false); };
+</script>
+
+</body>
+</html>

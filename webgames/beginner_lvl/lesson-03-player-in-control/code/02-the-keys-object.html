@@ -1,0 +1,91 @@
+<!doctype html>
+<!-- ==========================================================================
+     02 - The keys object
+     Lesson 3, Web Games, Beginner
+
+     WHAT THIS SHOWS:  Recording which keys are held down, and displaying the
+                       record live. Nothing moves yet - this file is only about
+                       the idea of remembering input instead of reacting to it.
+     RUN IT:           Double-click, click the canvas, then press and hold keys.
+     TRY THIS:         Hold three or four keys at once. Then try five or six.
+                       Many cheap keyboards physically cannot report more than
+                       about three at a time, which is a real limitation in
+                       local multiplayer games.
+     ========================================================================== -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>02 - The keys object</title>
+<style>
+  body { background:#f0f0f0; font-family:system-ui, sans-serif;
+         display:flex; flex-direction:column; align-items:center; padding:24px; }
+  canvas { border:2px solid #888; }
+  p { max-width:600px; }
+  .warn { color:#a00; font-weight:bold; }
+</style>
+</head>
+<body>
+
+<h1>02 - What is held down right now?</h1>
+<canvas id="game" width="600" height="300"></canvas>
+<p>Press keys. The handler only writes things down &mdash; it never moves anything.</p>
+
+<script>
+  const canvas = document.getElementById("game");
+  const ctx = canvas.getContext("2d");
+
+  // ---- THE RECORD ------------------------------------------------------
+  // One object holding which keys are currently down. That is the whole idea.
+  const keys = {};
+
+  document.addEventListener("keydown", function (event) {
+    keys[event.key] = true;        // write it down. Move nothing.
+    if (event.key.startsWith("Arrow") || event.key === " ") {
+      event.preventDefault();      // stop arrows and space scrolling the page
+    }
+  });
+
+  document.addEventListener("keyup", function (event) {
+    keys[event.key] = false;       // cross it out. Move nothing.
+  });
+
+  function render() {
+    ctx.fillStyle = "#222";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    ctx.fillStyle = "#ddd";
+    ctx.font = "16px system-ui, sans-serif";
+    ctx.fillText("Keys currently held down:", 20, 40);
+
+    // Object.keys(keys) gives every key name we have ever seen. We only want
+    // the ones whose value is currently true.
+    const held = Object.keys(keys).filter(function (name) {
+      return keys[name] === true;
+    });
+
+    ctx.font = "20px ui-monospace, Menlo, monospace";
+    ctx.fillStyle = "#51cf66";
+    if (held.length === 0) {
+      ctx.fillStyle = "#777";
+      ctx.fillText("(nothing)", 30, 80);
+    } else {
+      for (let i = 0; i < held.length; i++) {
+        ctx.fillText(held[i], 30, 80 + i * 28);
+      }
+    }
+
+    ctx.fillStyle = "#777";
+    ctx.font = "13px system-ui, sans-serif";
+    ctx.fillText("Note: a key nobody has touched is 'undefined', which an if treats as false.",
+                 20, 270);
+  }
+
+  function frame() {
+    render();
+    requestAnimationFrame(frame);
+  }
+  frame();
+</script>
+
+</body>
+</html>

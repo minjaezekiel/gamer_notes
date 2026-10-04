@@ -1,0 +1,93 @@
+<!doctype html>
+<!-- ==========================================================================
+     04 - Mouse control
+     Lesson 3, Web Games, Beginner
+
+     WHAT THIS SHOWS:  Reading the mouse, and converting a PAGE position into a
+                       CANVAS position - which catches people out constantly.
+     RUN IT:           Double-click, then move the mouse over the canvas.
+     TRY THIS:         Scroll the page, or resize the window, then move the
+                       mouse again. Still accurate? That is what
+                       getBoundingClientRect() is protecting you from.
+     ========================================================================== -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>04 - Mouse control</title>
+<style>
+  body { background:#f0f0f0; font-family:system-ui, sans-serif;
+         display:flex; flex-direction:column; align-items:center; padding:24px; }
+  canvas { border:2px solid #888; }
+  p { max-width:600px; }
+  .warn { color:#a00; font-weight:bold; }
+</style>
+</head>
+<body>
+
+<h1>04 - Mouse control</h1>
+<canvas id="game" width="600" height="400"></canvas>
+<p>Move the mouse over the canvas. The paddle follows, centred on the pointer.</p>
+
+<script>
+  const canvas = document.getElementById("game");
+  const ctx = canvas.getContext("2d");
+
+  const paddle = { x: 260, y: 350, width: 80, height: 14 };
+  // We store where the mouse is and let update() act on it, rather than moving
+  // the paddle inside the handler. That keeps all movement in one place - so
+  // pausing the game, or clamping, or slowing the paddle down, all still work.
+  let mouseX = 300;
+
+  canvas.addEventListener("mousemove", function (event) {
+    // event.clientX is measured from the left of the WINDOW, not the canvas.
+    // getBoundingClientRect() tells us where the canvas currently sits, so we
+    // can subtract it. Without this the paddle is offset by however far the
+    // canvas is from the window edge, and the offset changes when you scroll.
+    const bounds = canvas.getBoundingClientRect();
+    mouseX = event.clientX - bounds.left;
+  });
+
+  function update(dt) {
+    // Centre the paddle on the pointer rather than putting its corner there.
+    paddle.x = mouseX - paddle.width / 2;
+
+    if (paddle.x < 0) { paddle.x = 0; }
+    if (paddle.x + paddle.width > canvas.width) {
+      paddle.x = canvas.width - paddle.width;
+    }
+  }
+
+  function render() {
+    ctx.fillStyle = "#222";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // a guide line showing the raw pointer position
+    ctx.strokeStyle = "#444";
+    ctx.beginPath();
+    ctx.moveTo(mouseX, 0);
+    ctx.lineTo(mouseX, canvas.height);
+    ctx.stroke();
+
+    ctx.fillStyle = "#4a9eff";
+    ctx.fillRect(paddle.x, paddle.y, paddle.width, paddle.height);
+
+    ctx.fillStyle = "#999";
+    ctx.font = "14px ui-monospace, Menlo, monospace";
+    ctx.fillText("mouseX on canvas = " + Math.round(mouseX), 20, 30);
+  }
+
+  let lastTime = 0;
+  function frame(currentTime) {
+    if (!lastTime) { lastTime = currentTime; }
+    let dt = (currentTime - lastTime) / 1000;
+    lastTime = currentTime;
+    if (dt > 0.1) { dt = 1 / 60; }
+    update(dt);
+    render();
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+</script>
+
+</body>
+</html>

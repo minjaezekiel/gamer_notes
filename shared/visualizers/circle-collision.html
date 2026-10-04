@@ -1,0 +1,233 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Circle Collision</title>
+<meta name="description" content="Drag two circles together and watch Pythagoras decide whether they touch.">
+<link rel="stylesheet" href="../css/notes.css">
+<link rel="stylesheet" href="../css/code.css">
+</head>
+<body>
+<div class="wrap">
+
+  <p class="breadcrumb"><a href="index.html">&larr; All visualizers</a></p>
+
+  <header class="lesson-head">
+    <p class="kicker">Concept 7 &middot; Works for JavaScript, Python and C++</p>
+    <h1>Circle Collision: Pythagoras Earns Its Keep</h1>
+    <p class="meta">One comparison instead of four. Used in: web L4 &middot; python L4 &middot; c++ L5</p>
+  </header>
+
+  <p class="lede">Two circles are touching when the distance between their centres is less than their
+  radii added together. That is the entire test. The only question is how to measure a diagonal
+  distance &mdash; and the answer is a theorem you already know.</p>
+
+  <div class="look-for">
+    <strong>What to look for</strong>
+    Drag either circle. The grey right-angled triangle is the one from your maths book:
+    <code>dx</code> along the bottom, <code>dy</code> up the side, and the distance as the sloping
+    side. Watch the two numbers at the bottom &mdash; <strong>distance</strong> and
+    <strong>r1 + r2</strong> &mdash; and see which is bigger.
+  </div>
+
+  <div id="circDemo"></div>
+
+  <h2>The code</h2>
+
+  <div class="code" data-lang="js" data-file="collide.js" data-hl="6,9,12">
+<pre><code>function circlesOverlap(a, b) {
+  // How far apart are the centres, across and down?
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+
+  // Pythagoras: the straight-line distance between the two centres.
+  const distance = Math.sqrt(dx * dx + dy * dy);
+
+  // If the gap is smaller than the two radii added up, they must be touching.
+  return distance < a.radius + b.radius;
+}</code></pre>
+  </div>
+
+  <div class="box box-maths">
+    <span class="box-label">The maths you just used</span>
+    <p>Pythagoras' theorem says that in a right-angled triangle,
+    <strong>a&sup2; + b&sup2; = c&sup2;</strong>, where c is the longest side.</p>
+    <p>Here, <code>dx</code> and <code>dy</code> are the two short sides, and the distance you want is
+    the long one. Rearranged:</p>
+    <p style="text-align:center;font-size:1.2em">
+    <strong>distance = &radic;(dx&sup2; + dy&sup2;)</strong></p>
+    <p>You have probably used this to find the side of a triangle in a textbook. This is the same
+    formula doing a real job: it is how every game in the world measures &ldquo;how far away is that?&rdquo;
+    It is also what <code>Math.hypot(dx, dy)</code> does for you in one call.</p>
+  </div>
+
+  <div class="box box-goal">
+    <span class="box-label">A professional trick: skip the square root</span>
+    <p>Square roots are one of the slower things a computer does. And notice: if
+    <code>distance &lt; limit</code>, then <code>distance&sup2; &lt; limit&sup2;</code> as well.
+    Both sides are positive, so squaring both keeps the answer the same. So you can write:</p>
+    <div class="code" data-lang="js" data-numbers="off">
+<pre><code>const distanceSquared = dx * dx + dy * dy;
+const limit = a.radius + b.radius;
+return distanceSquared < limit * limit;    // same answer, no square root</code></pre>
+    </div>
+    <p>Tick the box in the demo to watch both versions agree on every single position. For two circles
+    nobody would notice the difference &mdash; but for ten thousand particles, it is real. The general
+    lesson is worth more than the trick: <strong>if you only need to compare two things, you often do
+    not need to fully calculate either of them.</strong></p>
+  </div>
+
+  <div class="box box-think">
+    <span class="box-label">Think like an engineer</span>
+    <p>Circles need one comparison. Boxes need four. Circles do not care about rotation, boxes do.
+    So why does almost every 2D game use boxes for most things?</p>
+    <p>Think about what shape a person, a crate, a platform and a bullet each really are. Then think
+    about a game where the player is drawn as a person but their <em>hitbox</em> is a circle at their
+    feet. What would that feel like to play? Where have you seen it?</p>
+  </div>
+
+  <div class="box box-vocab">
+    <span class="box-label">Vocabulary</span>
+    <ul>
+      <li><strong>Radius</strong> &mdash; the distance from the centre of a circle to its edge. Half the
+      width.</li>
+      <li><strong>Euclidean distance</strong> &mdash; the ordinary straight-line distance. The
+      Pythagoras one.</li>
+      <li><strong>Squared distance</strong> &mdash; the distance before you take the square root. Used
+      for comparisons.</li>
+      <li><strong>Hitbox / hurtbox</strong> &mdash; the shape used for collisions, which need not match
+      the drawn picture.</li>
+    </ul>
+  </div>
+
+  <p class="breadcrumb"><a href="index.html">&larr; All visualizers</a></p>
+</div>
+
+<script src="../js/page.js"></script>
+<script src="../js/anim.js"></script>
+<script src="../js/codeblock.js"></script>
+<script>
+(function () {
+  var R1 = 56, R2 = 44;
+  var squaredToggle;
+
+  var sk = Anim.sketch({
+    mount: '#circDemo',
+    width: 900, height: 400,
+    controls: ['reset'],
+    showFrameCount: false,
+    state: function () { return {}; },
+
+    draw: function (s, g, api) {
+      var T = g.color;
+      g.clear();
+
+      var a = api.handle('a', 250, 180, { hidden: true });
+      var b = api.handle('b', 520, 250, { hidden: true });
+      [a, b].forEach(function (p) {
+        p.x = Math.max(70, Math.min(640, p.x));
+        p.y = Math.max(70, Math.min(340, p.y));
+      });
+
+      var dx = b.x - a.x;
+      var dy = b.y - a.y;
+      var distance = Math.sqrt(dx * dx + dy * dy);
+      var limit = R1 + R2;
+      var hit = distance < limit;
+
+      /* ---- the right-angled triangle, drawn before the circles so the circles
+         sit on top of it ---- */
+      g.ctx.save();
+      g.ctx.globalAlpha = 0.55;
+      g.ctx.beginPath();
+      g.ctx.moveTo(a.x, a.y); g.ctx.lineTo(b.x, a.y); g.ctx.lineTo(b.x, b.y);
+      g.ctx.closePath();
+      g.ctx.fillStyle = T.grid;
+      g.ctx.fill();
+      g.ctx.restore();
+
+      // the little square marking the right angle
+      var sgnX = dx >= 0 ? 1 : -1, sgnY = dy >= 0 ? 1 : -1;
+      g.strokeRect(b.x - sgnX * 14, a.y, sgnX * 14, sgnY * 14, T.muted, 1.5);
+
+      g.line(a.x, a.y, b.x, a.y, T.muted, 2);                    // dx
+      g.line(b.x, a.y, b.x, b.y, T.muted, 2);                    // dy
+      g.text('dx = ' + Math.round(dx), (a.x + b.x) / 2, a.y - 10,
+        { size: 14, bold: true, align: 'center', color: T.muted, mono: true });
+      g.text('dy = ' + Math.round(dy), b.x + sgnX * 10, (a.y + b.y) / 2,
+        { size: 14, bold: true, color: T.muted, mono: true,
+          align: sgnX > 0 ? 'left' : 'right' });
+
+      /* ---- the centre-to-centre line: this is the distance ---- */
+      g.line(a.x, a.y, b.x, b.y, hit ? T.bad : T.accent, 3.5);
+
+      /* ---- the circles ---- */
+      g.ctx.save(); g.ctx.globalAlpha = 0.3;
+      g.circle(a.x, a.y, R1, T.accent);
+      g.circle(b.x, b.y, R2, T.accent2);
+      g.ctx.restore();
+      g.ring(a.x, a.y, R1, T.accent, 3);
+      g.ring(b.x, b.y, R2, T.accent2, 3);
+
+      // radius lines, so r1 and r2 are things you can see
+      g.dashed(a.x, a.y, a.x - R1, a.y, T.accent, 2, [4, 3]);
+      g.text('r1 = ' + R1, a.x - R1 / 2, a.y - 8,
+        { size: 12, align: 'center', color: T.accent, mono: true });
+      g.dashed(b.x, b.y, b.x + R2, b.y, T.accent2, 2, [4, 3]);
+      g.text('r2 = ' + R2, b.x + R2 / 2, b.y - 8,
+        { size: 12, align: 'center', color: T.accent2, mono: true });
+
+      api.handle('a', a.x, a.y, { label: 'a', color: T.accent, r: 8 });
+      api.handle('b', b.x, b.y, { label: 'b', color: T.accent2, r: 8 });
+
+      /* ---- the readout panel ---- */
+      var PX = 686, PY = 60;
+      g.text('THE COMPARISON', PX, PY - 18, { size: 14, bold: true, color: T.muted });
+
+      row(g, T, PX, PY,      'distance', distance.toFixed(1), hit ? T.bad : T.accent);
+      row(g, T, PX, PY + 66, 'r1 + r2', limit.toFixed(1), T.muted);
+
+      g.text(hit ? 'distance  <  r1+r2' : 'distance  >  r1+r2', PX, PY + 158,
+        { size: 15, bold: true, color: hit ? T.bad : T.muted, mono: true });
+
+      g.panel(PX, PY + 174, 190, 56, hit ? T.bad : T.panel, 8);
+      g.text(hit ? 'TOUCHING' : 'not touching', PX + 95, PY + 208,
+        { size: 19, bold: true, align: 'center', color: hit ? T.bg : T.muted });
+
+      /* ---- the no-square-root version, shown agreeing ---- */
+      if (squaredToggle && squaredToggle.checked) {
+        var d2 = dx * dx + dy * dy;
+        var l2 = limit * limit;
+        var hit2 = d2 < l2;
+        g.text('without the square root:', PX, PY + 258, { size: 12, bold: true, color: T.muted });
+        g.text(Math.round(d2) + (hit2 ? '  <  ' : '  >  ') + Math.round(l2),
+          PX, PY + 278, { size: 13, color: T.ink, mono: true });
+        g.text(hit2 === hit ? 'same answer ✓' : 'DISAGREES — impossible!',
+          PX, PY + 298,
+          { size: 13, bold: true, color: hit2 === hit ? T.good : T.bad });
+      }
+
+      api.say(hit
+        ? 'The centres are <strong>' + distance.toFixed(1) + '</strong> apart, which is less than ' +
+          '<strong>' + limit + '</strong>, so the circles overlap.'
+        : 'The centres are <strong>' + distance.toFixed(1) + '</strong> apart. They need to get ' +
+          'within <strong>' + limit + '</strong> to touch — another ' +
+          (distance - limit).toFixed(1) + ' to go.');
+    }
+  });
+
+  function row(g, T, x, y, label, value, colour) {
+    g.text(label, x, y + 14, { size: 13, color: T.muted });
+    g.text(value, x, y + 44, { size: 28, bold: true, color: colour, mono: true });
+  }
+
+  /* anim.js's own toggle() helper is used here rather than a hand-built
+     checkbox, because it redraws the canvas when the value changes. This sketch
+     never animates, so without that redraw the checkbox would appear to do
+     nothing at all. */
+  squaredToggle = sk.toggle('Also show the version with no square root', false);
+}());
+</script>
+</body>
+</html>

@@ -1,0 +1,149 @@
+<!doctype html>
+<!-- ==========================================================================
+     01 - One variable instead of four flags
+     Lesson 5, Web Games, Beginner
+
+     WHAT THIS SHOWS:  A state machine controlling a tiny game. Watch what
+                       happens when you press a key that has no rule for the
+                       current state: NOTHING. That is correct.
+     RUN IT:           Double-click, click the canvas, then press Space, P, Esc.
+     TRY THIS:         Press P while on the menu. Nothing happens. There is no
+                       rule for pausing a game that has not started, so the
+                       press is ignored - and that is a feature.
+     ========================================================================== -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>01 - Game states</title>
+<style>
+  body { background:#f0f0f0; font-family:system-ui, sans-serif;
+         display:flex; flex-direction:column; align-items:center; padding:24px; }
+  canvas { border:2px solid #888; }
+  p { max-width:620px; }
+</style>
+</head>
+<body>
+
+<h1>01 - One state, not four flags</h1>
+<canvas id="game" width="620" height="360"></canvas>
+<p><strong>Space</strong> start / restart &middot; <strong>P</strong> pause &middot;
+<strong>Esc</strong> quit to menu &middot; <strong>K</strong> pretend to lose</p>
+
+<script>
+  const canvas = document.getElementById("game");
+  const ctx = canvas.getContext("2d");
+
+  // ---- ONE VARIABLE ----------------------------------------------------
+  // With four true/false flags there would be 16 combinations and only four
+  // would make sense. With one variable there are exactly four, and all four
+  // are valid. The nonsense states are not fixed - they are IMPOSSIBLE.
+  let state = "MENU";          // MENU | PLAYING | PAUSED | GAME_OVER
+
+  let box = { x: 60, y: 160, speedX: 180 };
+  let lastEvent = "";
+  let lastEventAccepted = null;
+  let lastTime = 0;
+
+  document.addEventListener("keydown", function (e) {
+    // The SAME key does different things depending on the state. And a key
+    // with no rule for the current state simply does nothing.
+    let handled = false;
+
+    if (e.key === " ") {
+      if (state === "MENU" || state === "GAME_OVER") {
+        box.x = 60;
+        state = "PLAYING";
+        handled = true;
+      }
+    } else if (e.key === "p" || e.key === "P") {
+      if (state === "PLAYING") { state = "PAUSED"; handled = true; }
+      else if (state === "PAUSED") { state = "PLAYING"; handled = true; }
+    } else if (e.key === "Escape") {
+      if (state === "PLAYING" || state === "PAUSED" || state === "GAME_OVER") {
+        state = "MENU"; handled = true;
+      }
+    } else if (e.key === "k" || e.key === "K") {
+      if (state === "PLAYING") { state = "GAME_OVER"; handled = true; }
+    } else {
+      return;
+    }
+
+    lastEvent = e.key === " " ? "Space" : e.key;
+    lastEventAccepted = handled;
+    if (e.key === " ") { e.preventDefault(); }
+  });
+
+  function update(dt) {
+    // Check the state ONCE, here, and simply do not call the movement code.
+    // Do NOT scatter "if (!paused)" through every object - you will forget one.
+    if (state === "PLAYING") {
+      box.x += box.speedX * dt;
+      if (box.x > 560 || box.x < 20) { box.speedX = -box.speedX; }
+    }
+  }
+
+  function render() {
+    ctx.fillStyle = "#15181d";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // The state decides what gets drawn.
+    if (state === "MENU") {
+      centreText("TINY GAME", 150, 34, "#eee");
+      centreText("press SPACE to start", 190, 17, "#888");
+    } else {
+      // PLAYING, PAUSED and GAME_OVER all draw the game itself...
+      ctx.fillStyle = "#4a9eff";
+      ctx.fillRect(box.x, box.y, 40, 40);
+
+      // ...and then add an overlay if needed. States are not always separate
+      // screens.
+      if (state === "PAUSED") {
+        ctx.fillStyle = "rgba(0,0,0,0.6)";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        centreText("PAUSED", 180, 30, "#eee");
+        centreText("P to carry on", 212, 15, "#888");
+      }
+      if (state === "GAME_OVER") {
+        ctx.fillStyle = "rgba(0,0,0,0.6)";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        centreText("GAME OVER", 180, 30, "#ff6b6b");
+        centreText("SPACE to play again", 212, 15, "#888");
+      }
+    }
+
+    // a live readout, so you can see the machine working
+    ctx.font = "15px ui-monospace, Menlo, monospace";
+    ctx.fillStyle = "#51cf66";
+    ctx.fillText('state = "' + state + '"', 16, 28);
+
+    if (lastEvent) {
+      ctx.fillStyle = lastEventAccepted ? "#51cf66" : "#ff6b6b";
+      ctx.font = "13px ui-monospace, Menlo, monospace";
+      ctx.fillText(
+        lastEvent + (lastEventAccepted ? "  accepted" : "  IGNORED (no rule for this state)"),
+        16, 340);
+    }
+  }
+
+  function centreText(text, y, size, colour) {
+    ctx.fillStyle = colour;
+    ctx.font = "bold " + size + "px system-ui, sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText(text, canvas.width / 2, y);
+    ctx.textAlign = "left";
+  }
+
+  function frame(currentTime) {
+    if (!lastTime) { lastTime = currentTime; }
+    let dt = (currentTime - lastTime) / 1000;
+    lastTime = currentTime;
+    if (dt > 0.1) { dt = 1 / 60; }
+    update(dt);
+    render();
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+</script>
+
+</body>
+</html>

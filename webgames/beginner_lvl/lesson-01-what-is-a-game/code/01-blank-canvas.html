@@ -1,0 +1,67 @@
+<!doctype html>
+<!-- ==========================================================================
+     01 - A place to draw
+     Lesson 1, Web Games, Beginner
+
+     WHAT THIS SHOWS:  How to get a drawing area on a web page.
+     RUN IT:           Double-click this file. It opens in your browser.
+     CHANGE ME FIRST:  The "#222222" on line 38. Try "#660000" (dark red),
+                       or "white". What happens if you type a colour that
+                       does not exist, like "banana"?
+     ========================================================================== -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>01 - Blank canvas</title>
+<style>
+  /* Plain page styling. None of this is game code - it just makes the
+     canvas easy to see, centred on a light background. */
+  body {
+    background: #f0f0f0;
+    font-family: system-ui, sans-serif;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 24px;
+  }
+  canvas { border: 2px solid #888; }
+</style>
+</head>
+<body>
+
+<h1>01 - A place to draw</h1>
+
+<!-- THE CANVAS.
+     This is the drawing area. width and height are measured in PIXELS -
+     single dots on the screen. So our game world is 600 dots across and
+     400 dots down.
+
+     Note: set the size HERE, with width="600", not in CSS. Setting it in
+     CSS stretches the picture instead of making the drawing area bigger,
+     and everything comes out blurry. This catches people out a lot. -->
+<canvas id="game" width="600" height="400"></canvas>
+
+<p>If you can see a dark rectangle above, everything is working.</p>
+
+<!-- The script comes AFTER the canvas on purpose. The browser reads this
+     file top to bottom, so if the script ran first, the canvas would not
+     exist yet and getElementById would hand back nothing. -->
+<script>
+  // Find the canvas on the page, using the id we gave it.
+  const canvas = document.getElementById("game");
+
+  // Ask the canvas for a "2D drawing context". This object is the thing
+  // that actually draws. Everyone shortens it to ctx, so we will too.
+  const ctx = canvas.getContext("2d");
+
+  // Drawing always takes two steps: choose the colour, THEN draw.
+  // The context works like a pen you are holding.
+  ctx.fillStyle = "#222222";
+
+  // fillRect(x, y, width, height) fills in a rectangle.
+  // (0, 0) is the TOP-LEFT corner of the canvas. Not the middle.
+  ctx.fillRect(0, 0, 600, 400);
+</script>
+
+</body>
+</html>

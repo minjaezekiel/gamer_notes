@@ -1,0 +1,109 @@
+<!doctype html>
+<!-- ==========================================================================
+     03 - The bouncing ball  (the finished lesson 2 result)
+     Lesson 2, Web Games, Beginner
+
+     WHAT THIS SHOWS:  Velocity, wall bouncing, and delta time all together.
+                       This is the thing you are building today.
+     RUN IT:           Double-click this file.
+     CHANGE ME FIRST:  ball.speedX and ball.speedY on lines 46 and 47.
+                       Try 1200. Try a negative. Try setting speedY to 0.
+     BREAK IT:         Delete the "ball.x = canvas.width - ball.radius" line and
+                       watch the ball vibrate against the wall forever.
+     ========================================================================== -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>03 - Bouncing ball</title>
+<style>
+  body { background:#f0f0f0; font-family:system-ui, sans-serif;
+         display:flex; flex-direction:column; align-items:center; padding:24px; }
+  canvas { border:2px solid #888; }
+  p { max-width:600px; }
+</style>
+</head>
+<body>
+
+<h1>03 - A ball that bounces</h1>
+<canvas id="game" width="600" height="400"></canvas>
+<p>It moves at the same real-world speed on every computer, because every
+movement is multiplied by dt.</p>
+
+<script>
+  const canvas = document.getElementById("game");
+  const ctx = canvas.getContext("2d");
+
+  // ---- STATE ----------------------------------------------------------
+  // All of the ball's numbers gathered into one object. This is tidier than
+  // four loose variables, and it is how you will write everything from now on.
+  const ball = {
+    x: 300,          // centre, across
+    y: 200,          // centre, down
+    radius: 15,
+    speedX: 220,     // pixels per SECOND, positive = rightwards
+    speedY: 160      // pixels per SECOND, positive = DOWNWARDS
+  };
+
+  let lastTime = 0;
+
+  function update(dt) {
+    // ---- MOVE ----
+    ball.x = ball.x + ball.speedX * dt;
+    ball.y = ball.y + ball.speedY * dt;
+
+    // ---- BOUNCE ----
+    // We test the EDGE of the ball, not its centre. The centre is still a whole
+    // radius away from the wall when the ball first touches it.
+    //
+    // And notice the order inside each if: first PUT THE BALL BACK somewhere
+    // legal, then flip the speed. Do it the other way round and the ball can
+    // get stuck outside the wall, flipping back and forth every frame, which
+    // looks like it is vibrating.
+
+    if (ball.x + ball.radius > canvas.width) {    // right wall
+      ball.x = canvas.width - ball.radius;
+      ball.speedX = -ball.speedX;
+    }
+    if (ball.x - ball.radius < 0) {               // left wall
+      ball.x = ball.radius;
+      ball.speedX = -ball.speedX;
+    }
+    if (ball.y + ball.radius > canvas.height) {   // floor
+      ball.y = canvas.height - ball.radius;
+      ball.speedY = -ball.speedY;
+    }
+    if (ball.y - ball.radius < 0) {               // ceiling
+      ball.y = ball.radius;
+      ball.speedY = -ball.speedY;
+    }
+  }
+
+  function render() {
+    // erase
+    ctx.fillStyle = "#222";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // then draw. arc() draws a circle: centre x, centre y, radius, start
+    // angle, end angle. 0 to Math.PI*2 is a full turn.
+    ctx.fillStyle = "#4a9eff";
+    ctx.beginPath();
+    ctx.arc(ball.x, ball.y, ball.radius, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  function frame(currentTime) {
+    if (!lastTime) { lastTime = currentTime; }
+    let dt = (currentTime - lastTime) / 1000;
+    lastTime = currentTime;
+    if (dt > 0.1) { dt = 1 / 60; }
+
+    update(dt);
+    render();
+    requestAnimationFrame(frame);
+  }
+
+  requestAnimationFrame(frame);
+</script>
+
+</body>
+</html>

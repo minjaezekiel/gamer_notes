@@ -1,0 +1,74 @@
+<!doctype html>
+<!-- ==========================================================================
+     04 - What happens if you forget to erase
+     Lesson 1, Web Games, Beginner
+
+     This file is DELIBERATELY BROKEN. Run it and watch the smear.
+
+     WHAT THIS SHOWS:  The canvas never cleans itself. If you draw the square
+                       in a new place without erasing the old picture, the old
+                       picture is still there. After 200 frames you have 200
+                       squares.
+     RUN IT:           Double-click this file.
+     FIX ME:           Line 61 is commented out. Remove the // and reload.
+     THEN TRY:         Put the // back, but change the fillStyle on line 60 to
+                       "rgba(0, 0, 0, 0.08)" - a see-through black - and
+                       un-comment line 61. Why do you get a fading trail?
+     ========================================================================== -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>04 - Forgetting to erase</title>
+<style>
+  body { background:#f0f0f0; font-family:system-ui, sans-serif;
+         display:flex; flex-direction:column; align-items:center; padding:24px; }
+  canvas { border:2px solid #888; }
+  .warn { color:#a00; font-weight:bold; }
+</style>
+</head>
+<body>
+
+<h1>04 - Forgetting to erase</h1>
+<canvas id="game" width="600" height="400"></canvas>
+<p class="warn">This one is broken on purpose. Look at the comments in the file.</p>
+
+<script>
+  const canvas = document.getElementById("game");
+  const ctx = canvas.getContext("2d");
+
+  let squareX = 50;
+  const squareY = 180;
+  const SQUARE_SIZE = 40;
+  const SPEED = 2;
+
+  // Paint the background ONCE, before the loop starts, so the canvas is not
+  // transparent white to begin with.
+  ctx.fillStyle = "#222222";
+  ctx.fillRect(0, 0, 600, 400);
+
+  function update() {
+    squareX = squareX + SPEED;
+    if (squareX > 600) { squareX = -SQUARE_SIZE; }
+  }
+
+  function render() {
+    // THE MISSING ERASE.
+    // Remove the // from the start of the next two lines to fix the smear.
+    // ctx.fillStyle = "#222222";
+    // ctx.fillRect(0, 0, 600, 400);
+
+    ctx.fillStyle = "#4a9eff";
+    ctx.fillRect(squareX, squareY, SQUARE_SIZE, SQUARE_SIZE);
+  }
+
+  function frame() {
+    update();
+    render();
+    requestAnimationFrame(frame);
+  }
+
+  frame();
+</script>
+
+</body>
+</html>

@@ -1,0 +1,95 @@
+<!doctype html>
+<!-- ==========================================================================
+     03 - THE GAME LOOP
+     Lesson 1, Web Games, Beginner
+
+     This is the most important file in the whole course. Everything you build
+     from here on is this file with more code inside update() and render().
+
+     WHAT THIS SHOWS:  input -> update -> render, repeating forever.
+     RUN IT:           Double-click this file.
+     CHANGE ME FIRST:  The "+ 2" on line 62. Try 10. Try -2. Try 0.5.
+     ========================================================================== -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>03 - The game loop</title>
+<style>
+  body { background:#f0f0f0; font-family:system-ui, sans-serif;
+         display:flex; flex-direction:column; align-items:center; padding:24px; }
+  canvas { border:2px solid #888; }
+</style>
+</head>
+<body>
+
+<h1>03 - The game loop</h1>
+<canvas id="game" width="600" height="400"></canvas>
+<p>The square moves on its own. Nobody is pressing anything.</p>
+
+<script>
+  const canvas = document.getElementById("game");
+  const ctx = canvas.getContext("2d");
+
+  // ---- STATE -----------------------------------------------------------
+  // Everything the game remembers between one frame and the next.
+  let squareX = 50;
+  const squareY = 180;
+  const SQUARE_SIZE = 40;
+  const SPEED = 2;               // pixels moved per frame
+
+  // ---- JOB 1: INPUT ----------------------------------------------------
+  // There is no input yet - nothing reacts to the keyboard until lesson 3.
+  // The function is here anyway, empty, so that the SHAPE of the loop is
+  // right from day one. Later you will fill it in and nothing else changes.
+  function readInput() {
+    // (lesson 3 fills this in)
+  }
+
+  // ---- JOB 2: UPDATE ---------------------------------------------------
+  // Change the numbers. Do not draw anything in here. Not one pixel.
+  function update() {
+    squareX = squareX + SPEED;
+
+    // Read that line as: "the NEW squareX becomes the OLD squareX plus 2."
+    // The = sign does not mean "equals" here. It means "becomes".
+
+    // If the square has gone off the right-hand edge, put it back on the
+    // left so there is always something to watch.
+    if (squareX > 600) {
+      squareX = -SQUARE_SIZE;
+    }
+  }
+
+  // ---- JOB 3: RENDER ---------------------------------------------------
+  // Draw the world as it is RIGHT NOW. Do not change any numbers in here.
+  function render() {
+    // ERASE FIRST. The canvas does not clean itself: whatever you drew last
+    // frame is still sitting there. Painting the background over the whole
+    // canvas wipes it. Delete this line and watch what happens (file 04).
+    ctx.fillStyle = "#222222";
+    ctx.fillRect(0, 0, 600, 400);
+
+    // THEN DRAW.
+    ctx.fillStyle = "#4a9eff";
+    ctx.fillRect(squareX, squareY, SQUARE_SIZE, SQUARE_SIZE);
+  }
+
+  // ---- THE LOOP --------------------------------------------------------
+  // One call to frame() produces one picture: one page of the flipbook.
+  function frame() {
+    readInput();
+    update();
+    render();
+
+    // Ask the browser to call frame() again when it is ready to draw the
+    // next picture - about 60 times a second. THIS is what makes it a loop.
+    // There is no "while" anywhere, and yet it never stops.
+    requestAnimationFrame(frame);
+  }
+
+  // Nothing has happened yet. This first call starts everything.
+  frame();
+</script>
+
+</body>
+</html>

@@ -1,0 +1,83 @@
+<!doctype html>
+<!-- ==========================================================================
+     01 - Moving inside the event handler (THE WRONG WAY)
+     Lesson 3, Web Games, Beginner
+
+     This file is DELIBERATELY WRONG. It is how nearly everybody tries first.
+
+     RUN IT:    Double-click this file, click the canvas, then HOLD the right
+                arrow key down.
+     WATCH FOR: the paddle moves once, pauses for about half a second, and
+                then jerks along in steps.
+
+     That pause is your OPERATING SYSTEM's key-repeat setting - the same thing
+     that makes "aaaa" appear if you hold a letter in a text box. It was
+     designed for typing and it is wrong for games.
+
+     ALSO TRY:  hold Right and Left together. Then hold Right and press Left
+                briefly. The behaviour is not what you want.
+     ========================================================================== -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>01 - The wrong way</title>
+<style>
+  body { background:#f0f0f0; font-family:system-ui, sans-serif;
+         display:flex; flex-direction:column; align-items:center; padding:24px; }
+  canvas { border:2px solid #888; }
+  p { max-width:600px; }
+  .warn { color:#a00; font-weight:bold; }
+</style>
+</head>
+<body>
+
+<h1>01 - The wrong way</h1>
+<canvas id="game" width="600" height="400"></canvas>
+<p class="warn">Broken on purpose. Hold the right arrow and watch it stutter.</p>
+<p>Compare with <code>03-paddle.html</code>, which does it properly.</p>
+
+<script>
+  const canvas = document.getElementById("game");
+  const ctx = canvas.getContext("2d");
+
+  const paddle = { x: 260, y: 350, width: 80, height: 14 };
+
+  // ---- THE MISTAKE -----------------------------------------------------
+  // Moving the paddle right here, inside the handler.
+  //
+  // Four things are wrong with this:
+  //   1. It only moves as often as the OS repeats the key - hence the pause.
+  //   2. Delta time is bypassed entirely, so speed depends on key-repeat rate.
+  //   3. You cannot hold two keys at once; only the latest one repeats.
+  //   4. It happens outside the game loop, so it can run mid-render.
+  document.addEventListener("keydown", function (event) {
+    if (event.key === "ArrowRight") {
+      paddle.x = paddle.x + 10;
+    }
+    if (event.key === "ArrowLeft") {
+      paddle.x = paddle.x - 10;
+    }
+    if (event.key.startsWith("Arrow")) { event.preventDefault(); }
+  });
+
+  function render() {
+    ctx.fillStyle = "#222";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = "#ff6b6b";
+    ctx.fillRect(paddle.x, paddle.y, paddle.width, paddle.height);
+
+    ctx.fillStyle = "#999";
+    ctx.font = "14px system-ui, sans-serif";
+    ctx.fillText("Hold the right arrow. Notice the pause, then the stutter.", 20, 40);
+  }
+
+  function frame() {
+    // update() does nothing at all here - which is the problem.
+    render();
+    requestAnimationFrame(frame);
+  }
+  frame();
+</script>
+
+</body>
+</html>

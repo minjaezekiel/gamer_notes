@@ -1,0 +1,266 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Grids and Flat Arrays</title>
+<meta name="description" content="A grid is a lie. See how a 2D level is really one long line of numbers, and learn the two formulas that convert between them.">
+<link rel="stylesheet" href="../css/notes.css">
+<link rel="stylesheet" href="../css/code.css">
+</head>
+<body>
+<div class="wrap">
+
+  <p class="breadcrumb"><a href="index.html">&larr; All visualizers</a></p>
+
+  <header class="lesson-head">
+    <p class="kicker">Concept 11 &middot; Works for JavaScript, Python and C++</p>
+    <h1>A Grid Is Really One Long Line</h1>
+    <p class="meta">The two formulas that turn a level into memory. Used in: c++ L3 and L4 &middot; python L4 &middot; web L6</p>
+  </header>
+
+  <p class="lede">Computer memory has no idea what a grid is. It is one long row of boxes, numbered
+  from zero. So every tile map, every chess board and every ASCII screen is really a single line of
+  numbers that we <em>agree</em> to read in rows.</p>
+
+  <div class="look-for">
+    <strong>What to look for</strong>
+    Drag the marker around the grid. Watch the matching cell light up in the long strip underneath,
+    and watch the formula at the bottom fill in with real numbers. Notice what happens when you move
+    <strong>one square right</strong> (the index goes up by 1) versus <strong>one square down</strong>
+    (it jumps by a whole row&rsquo;s worth).
+  </div>
+
+  <div id="tileDemo"></div>
+
+  <h2>The two formulas</h2>
+
+  <div class="cols cols-2">
+    <div>
+      <p><strong>Grid &rarr; index</strong> (you know x and y, you want the position in the array)</p>
+      <div class="code" data-lang="js" data-numbers="off">
+<pre><code>index = y * WIDTH + x;</code></pre>
+      </div>
+      <p>Read it as: &ldquo;skip <code>y</code> whole rows, then count <code>x</code> more across&rdquo;.
+      Each whole row you skip is <code>WIDTH</code> boxes long, so skipping <code>y</code> rows means
+      skipping <code>y &times; WIDTH</code> boxes.</p>
+    </div>
+    <div>
+      <p><strong>Index &rarr; grid</strong> (you know the position in the array, you want x and y)</p>
+      <div class="code" data-lang="js" data-numbers="off">
+<pre><code>x = index % WIDTH;              // the remainder
+y = Math.floor(index / WIDTH);  // the whole part</code></pre>
+      </div>
+      <p>This is long division. <code>index &divide; WIDTH</code> tells you <em>how many complete rows
+      fit</em>, which is y. The leftover is how far across you are, which is x.</p>
+    </div>
+  </div>
+
+  <div class="box box-maths">
+    <span class="box-label">The maths you just used</span>
+    <p>The <code>%</code> symbol is the <strong>modulo</strong> operator, and it means
+    &ldquo;the remainder after dividing&rdquo;. If <code>WIDTH</code> is 8, then
+    <code>19 % 8</code> is 3, because 8 goes into 19 twice with 3 left over.</p>
+    <p>You already know this operation: it is exactly what you did in primary school as
+    &ldquo;17 divided by 5 is 3 remainder 2&rdquo;. Programmers split that one answer into two
+    operators: <code>/</code> (or integer division) gives the 3, and <code>%</code> gives the 2.</p>
+    <p>Modulo is also how you make anything wrap around &mdash; a clock face, a cycling colour, an
+    enemy patrolling a loop of waypoints. Any time you want numbers to count up and then start again,
+    reach for <code>%</code>.</p>
+  </div>
+
+  <div class="box box-goal">
+    <span class="box-label">Why not just use a grid of grids?</span>
+    <p>You can, and in JavaScript and Python it is often the friendlier choice:</p>
+    <div class="code" data-lang="python" data-numbers="off">
+<pre><code>level = [
+    [1, 1, 1, 1, 1],
+    [1, 0, 0, 0, 1],
+    [1, 0, 2, 0, 1],
+    [1, 1, 1, 1, 1],
+]
+tile = level[y][x]        # note: y FIRST, then x</code></pre>
+    </div>
+    <p>That reads nicely, and you should use it when it does. But you still need the flat version,
+    for three reasons. It is <strong>faster</strong>, because all the numbers sit next to each other in
+    memory instead of being scattered. It is how <strong>files and images</strong> store pixels, so you
+    will meet it the moment you load a level or a sprite. And in C++ a flat array is often simply
+    <em>easier</em> than a two-dimensional one.</p>
+    <p>Notice the trap in the code above: it is <code>level[y][x]</code>, not <code>level[x][y]</code>.
+    The outer list holds <em>rows</em>, so the first index chooses which row &mdash; which is y. Getting
+    this backwards produces a level that looks mirrored along the diagonal, and it is one of the most
+    common bugs in a first tile-map.</p>
+  </div>
+
+  <div class="box box-bug">
+    <span class="box-label">Find the bug</span>
+    <p>A student&rsquo;s ASCII dungeon prints correctly, but walking right eventually teleports the
+    player to the start of the next row down, as if the screen wrapped around:</p>
+    <div class="code" data-lang="cpp" data-numbers="off">
+<pre><code>if (key == 'd') {
+    player_index = player_index + 1;   // move right
+}</code></pre>
+    </div>
+    <p>Explain exactly why this happens, and write the check that prevents it. (Then notice: the same
+    bug cannot happen if you store x and y separately. What does that tell you about choosing a
+    representation?)</p>
+  </div>
+
+  <div class="box box-think">
+    <span class="box-label">Think like an engineer</span>
+    <p>You now have two ways to store a 2D world: a flat array with formulas, or a list of lists.
+    Invent a <strong>third</strong> way that would be better for a mostly-empty world &mdash; imagine a
+    1000&times;1000 map with only 40 walls on it.</p>
+    <p><em>Hint: you do not have to store the empty space at all. What would you store instead, and
+    what would get harder?</em> Whatever you invent has a name and is used in real games.</p>
+  </div>
+
+  <div class="box box-vocab">
+    <span class="box-label">Vocabulary</span>
+    <ul>
+      <li><strong>Index</strong> &mdash; a position in an array, counted from <strong>zero</strong>.</li>
+      <li><strong>Modulo</strong> (<code>%</code>) &mdash; the remainder after a division.</li>
+      <li><strong>Row-major order</strong> &mdash; the agreement that a grid is stored one row after
+      another. (Storing it column by column is <em>column-major</em>, and some maths software does
+      exactly that, which causes no end of confusion.)</li>
+      <li><strong>Stride</strong> &mdash; how far you jump in the array to move down one row. Here it is
+      just <code>WIDTH</code>.</li>
+      <li><strong>Tile map</strong> &mdash; a level built out of a grid of repeated square pictures.</li>
+    </ul>
+  </div>
+
+  <p class="breadcrumb"><a href="index.html">&larr; All visualizers</a></p>
+</div>
+
+<script src="../js/page.js"></script>
+<script src="../js/anim.js"></script>
+<script src="../js/codeblock.js"></script>
+<script>
+/* ---------------------------------------------------------------------------
+   Grid <-> flat array.
+
+   The design choice that teaches: the flat strip underneath is COLOUR-BANDED BY
+   ROW. A student immediately sees that the long line is just the grid's rows cut
+   out and laid end to end, which is the entire concept. The formula at the bottom
+   then fills in with live numbers, so it stops being algebra and becomes
+   arithmetic they can check.
+   ------------------------------------------------------------------------ */
+(function () {
+  var W = 8, H = 5;                 // grid size in tiles
+  var CELL = 58;
+  var GX = 30, GY = 76;             // grid top-left
+  var SX = 30, SY = 408;            // strip top-left
+  var STRIP_CELL = 21, STRIP_H = 30;
+
+  Anim.sketch({
+    mount: '#tileDemo',
+    width: 900, height: 500,
+    controls: ['reset'],
+    showFrameCount: false,
+    state: function () { return {}; },
+
+    draw: function (s, g, api) {
+      var T = g.color;
+      g.clear();
+
+      /* the marker, snapped to a whole tile */
+      var h = api.handle('m', GX + 3.5 * CELL, GY + 2.5 * CELL, { hidden: true });
+      h.x = Math.max(GX, Math.min(GX + W * CELL, h.x));
+      h.y = Math.max(GY, Math.min(GY + H * CELL, h.y));
+      var tx = Math.min(W - 1, Math.max(0, Math.floor((h.x - GX) / CELL)));
+      var ty = Math.min(H - 1, Math.max(0, Math.floor((h.y - GY) / CELL)));
+      var index = ty * W + tx;      // THE formula
+
+      g.text('THE GRID YOU THINK IN', GX, 42, { size: 15, bold: true, color: T.ink });
+      g.text('WIDTH = ' + W + ' tiles', GX + W * CELL + 18, 42,
+        { size: 13, color: T.muted, mono: true });
+
+      /* ---- the grid. Each row gets its own tint, matching the strip below. ---- */
+      for (var y = 0; y < H; y++) {
+        for (var x = 0; x < W; x++) {
+          var i = y * W + x;
+          var cx = GX + x * CELL, cy = GY + y * CELL;
+          var sel = (i === index);
+          g.rect(cx, cy, CELL, CELL, sel ? T.accent2 : rowTint(g, T, y));
+          g.strokeRect(cx, cy, CELL, CELL, T.bg, 2);
+          g.text(String(i), cx + CELL / 2, cy + CELL / 2 + 6,
+            { size: 16, bold: sel, align: 'center',
+              color: sel ? T.bg : T.ink, mono: true });
+        }
+      }
+
+      /* row and column rulers, so x and y are nameable */
+      for (var rx = 0; rx < W; rx++) {
+        g.text('x=' + rx, GX + rx * CELL + CELL / 2, GY - 8,
+          { size: 11, align: 'center', color: rx === tx ? T.accent2 : T.muted, mono: true });
+      }
+      for (var ry = 0; ry < H; ry++) {
+        g.text('y=' + ry, GX - 8, GY + ry * CELL + CELL / 2 + 5,
+          { size: 11, align: 'right', color: ry === ty ? T.accent2 : T.muted, mono: true });
+      }
+
+      api.handle('m', h.x, h.y, { label: 'drag', color: T.accent2, r: 9 });
+
+      /* ---- the readout ---- */
+      var PX = GX + W * CELL + 40;
+      g.text('WHAT MEMORY ACTUALLY HAS', PX, 42, { size: 15, bold: true, color: T.ink });
+      big(g, T, PX, 76,  'x', tx, T.accent);
+      big(g, T, PX, 150, 'y', ty, T.accent);
+      big(g, T, PX, 224, 'index', index, T.accent2);
+      g.text('one long line of', PX, 300, { size: 12, color: T.muted });
+      g.text((W * H) + ' boxes', PX, 320, { size: 17, bold: true, color: T.ink, mono: true });
+
+      /* ---- the flat strip: the rows, cut out and laid end to end ---- */
+      g.text('THE SAME DATA, AS IT REALLY SITS IN MEMORY', SX, SY - 42,
+        { size: 15, bold: true, color: T.ink });
+      g.text('each colour band is one row of the grid above', SX, SY - 24,
+        { size: 12.5, color: T.muted });
+
+      for (var i2 = 0; i2 < W * H; i2++) {
+        var row = Math.floor(i2 / W);
+        var bx = SX + i2 * STRIP_CELL;
+        var sel2 = (i2 === index);
+        g.rect(bx, SY, STRIP_CELL, STRIP_H, sel2 ? T.accent2 : rowTint(g, T, row));
+        g.strokeRect(bx, SY, STRIP_CELL, STRIP_H, T.bg, 1);
+        // Only label every other cell; at this size all 40 would be unreadable.
+        if (i2 % 2 === 0 || sel2) {
+          g.text(String(i2), bx + STRIP_CELL / 2, SY + 20,
+            { size: sel2 ? 12 : 10, bold: sel2, align: 'center',
+              color: sel2 ? T.bg : T.muted, mono: true });
+        }
+        // A tick marking where each new row begins.
+        if (i2 % W === 0) {
+          g.line(bx, SY - 6, bx, SY + STRIP_H + 6, T.ink, 2);
+          g.text('row ' + row, bx + 2, SY + STRIP_H + 20,
+            { size: 10.5, color: T.muted });
+        }
+      }
+      // An arrow from the chosen grid cell down to its box in the strip.
+      var fromX = GX + tx * CELL + CELL / 2, fromY = GY + ty * CELL + CELL;
+      var toX = SX + index * STRIP_CELL + STRIP_CELL / 2;
+      g.dashed(fromX, fromY + 2, toX, SY - 10, T.accent2, 2, [5, 4]);
+
+      /* ---- the formula, with the real numbers filled in ---- */
+      g.text('index = y * WIDTH + x   =   ' + ty + ' * ' + W + ' + ' + tx +
+             '   =   ' + (ty * W) + ' + ' + tx + '   =   ' + index,
+        SX, 486, { size: 16, bold: true, color: T.accent2, mono: true });
+
+      api.say('Tile <strong>(x=' + tx + ', y=' + ty + ')</strong> lives at index <strong>' +
+              index + '</strong>. Move one square right and the index changes by <strong>1</strong>; ' +
+              'move one square down and it changes by <strong>' + W + '</strong> — a whole row.');
+    }
+  });
+
+  /* Alternating row tints, built from the theme so they work in dark mode too. */
+  function rowTint(g, T, row) {
+    return (row % 2 === 0) ? T.panel : T.grid;
+  }
+
+  function big(g, T, x, y, label, value, colour) {
+    g.text(label, x, y, { size: 13, color: T.muted, mono: true });
+    g.text(String(value), x, y + 32, { size: 34, bold: true, color: colour, mono: true });
+  }
+}());
+</script>
+</body>
+</html>

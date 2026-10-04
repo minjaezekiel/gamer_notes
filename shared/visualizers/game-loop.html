@@ -1,0 +1,323 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The Game Loop</title>
+<meta name="description" content="Step through a running game one phase at a time: input, update, render, repeat forever.">
+<link rel="stylesheet" href="../css/notes.css">
+<link rel="stylesheet" href="../css/code.css">
+</head>
+<body>
+<div class="wrap">
+
+  <p class="breadcrumb"><a href="index.html">&larr; All visualizers</a></p>
+
+  <header class="lesson-head">
+    <p class="kicker">Concept 1 &middot; Works for JavaScript, Python and C++</p>
+    <h1>The Game Loop</h1>
+    <p class="meta">Every game ever made is this one shape. Used in: web L1 &middot; python L1 &middot; c++ L1</p>
+  </header>
+
+  <p class="lede">A game is not a program that runs once and stops. It is a program that does the
+  same three jobs over and over, forever, until you quit.</p>
+
+  <div class="look-for">
+    <strong>What to look for</strong>
+    Press <span class="kbd">Step 1 frame</span> three times. Each press does <em>one job</em>, not one
+    whole frame. Watch which box lights up, and notice that the square only <em>moves</em> during
+    UPDATE and only <em>appears somewhere new</em> during RENDER. Then press Play and watch the same
+    three jobs cycle so fast it looks like smooth movement.
+  </div>
+
+  <div id="loopDemo"></div>
+
+  <h2>What you just watched</h2>
+
+  <p>The three jobs always happen in this order, and the order matters:</p>
+
+  <div class="table-scroll">
+  <table>
+    <thead><tr><th>Job</th><th>What it does</th><th>If you skipped it</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><strong>INPUT</strong></td>
+        <td>Look at the keyboard, mouse or controller. Write down what the player is asking for.</td>
+        <td>The game ignores the player completely.</td>
+      </tr>
+      <tr>
+        <td><strong>UPDATE</strong></td>
+        <td>Change the numbers. Move things, check for collisions, add to the score.</td>
+        <td>Nothing ever changes. A frozen picture.</td>
+      </tr>
+      <tr>
+        <td><strong>RENDER</strong></td>
+        <td>Erase the screen and draw everything where it is <em>now</em>.</td>
+        <td>Things move, but you never see it. The screen stays on frame 1.</td>
+      </tr>
+    </tbody>
+  </table>
+  </div>
+
+  <div class="box box-warn">
+    <span class="box-label">The mistake almost everyone makes first</span>
+    <p>Beginners often try to move something and draw it in the same step, over and over, inside one
+    frame. That draws the ball in ten places at once. <strong>Update everything first. Then draw
+    everything.</strong> Keep the two jobs apart and most mysterious glitches never happen.</p>
+  </div>
+
+  <h2>The same loop in all three languages</h2>
+
+  <p>Look at the shape, not the words. It is identical.</p>
+
+  <div class="cols cols-3">
+    <div class="code" data-lang="js" data-file="game.js" data-numbers="off">
+<pre><code>function frame() {
+  readInput();
+  update();
+  render();
+  // ask the browser
+  // for the next frame
+  requestAnimationFrame(frame);
+}
+frame();</code></pre>
+    </div>
+
+    <div class="code" data-lang="python" data-file="game.py" data-numbers="off">
+<pre><code>while running:
+    read_input()
+    update()
+    render()
+    # wait a moment so the
+    # loop is not too fast
+    time.sleep(1 / 60)</code></pre>
+    </div>
+
+    <div class="code" data-lang="cpp" data-file="game.cpp" data-numbers="off">
+<pre><code>while (running) {
+    read_input();
+    update();
+    render();
+    // wait a moment so the
+    // loop is not too fast
+    sleep_for(16ms);
+}</code></pre>
+    </div>
+  </div>
+
+  <div class="box box-think">
+    <span class="box-label">Think like an engineer</span>
+    <p>A game runs its loop about 60 times a second. A chess program does not: it waits, possibly for
+    minutes, until you move a piece. Both are games.</p>
+    <p>So what decides whether a program needs a continuous loop or can just wait for input? Write
+    down three games of each kind, then try to state the rule in one sentence.</p>
+  </div>
+
+  <div class="box box-vocab">
+    <span class="box-label">Vocabulary</span>
+    <ul>
+      <li><strong>Frame</strong> — one trip around the loop. One picture, like one page of a flipbook.</li>
+      <li><strong>Frame rate</strong> — how many frames happen per second. Written <em>fps</em>.</li>
+      <li><strong>Game loop</strong> — the input / update / render cycle that repeats forever.</li>
+      <li><strong>State</strong> — all the numbers the game is currently remembering.</li>
+    </ul>
+  </div>
+
+  <p class="breadcrumb"><a href="index.html">&larr; All visualizers</a></p>
+</div>
+
+<script src="../js/page.js"></script>
+<script src="../js/anim.js"></script>
+<script src="../js/codeblock.js"></script>
+<script>
+/* ---------------------------------------------------------------------------
+   The game-loop visualizer.
+
+   The important design decision: one "step" advances ONE PHASE, not one whole
+   frame. Three presses of the Step button = one frame. That is what makes the
+   structure of the loop physical for a student instead of abstract.
+   ------------------------------------------------------------------------ */
+(function () {
+  var PHASES = [
+    { name: 'INPUT',  blurb: 'Which keys are held down?' },
+    { name: 'UPDATE', blurb: 'Change the numbers.' },
+    { name: 'RENDER', blurb: 'Erase, then draw it all.' }
+  ];
+
+  // Layout constants, named so they can be found and changed.
+  var BOX_X = 28, BOX_W = 300, BOX_H = 96, BOX_GAP = 26, BOX_Y0 = 86;
+  var SCREEN_X = 412, SCREEN_Y = 86, SCREEN_W = 452, SCREEN_H = 250;
+  var TAPE_Y = 388, TAPE_H = 64;
+  var PLAYER_SIZE = 34;
+  var SPEED = 46;              // logical pixels the player moves per frame
+
+  Anim.sketch({
+    mount: '#loopDemo',
+    width: 900, height: 470,
+    fps: 2.5,                  // one phase lasts 0.4 s at 1x speed: watchable
+    controls: ['play', 'step', 'reset', 'speed'],
+    showFrameCount: false,     // we draw our own, bigger counter
+
+    state: function () {
+      return {
+        phaseIndex: -1,        // -1 = nothing has happened yet
+        frame: 0,
+        // What the game REMEMBERS between frames. This is "state".
+        drawnX: 60,            // where the square is currently drawn
+        logicalX: 60,          // where UPDATE has moved it to (may differ!)
+        keyHeld: true,
+        tape: []               // one entry per completed frame, for the filmstrip
+      };
+    },
+
+    update: function (s, dt, api) {
+      s.phaseIndex = (s.phaseIndex + 1) % 3;
+      var phase = PHASES[s.phaseIndex].name;
+
+      if (phase === 'INPUT') {
+        // Reading input does not move anything. It only records a wish.
+        s.keyHeld = true;
+        api.say('<strong>INPUT.</strong> The game checks the keyboard and notes that ' +
+                'the right-arrow key is down. Nothing has moved yet.');
+
+      } else if (phase === 'UPDATE') {
+        // Here is where the number changes - but the SCREEN has not caught up.
+        if (s.keyHeld) { s.logicalX += SPEED; }
+        if (s.logicalX > SCREEN_W - PLAYER_SIZE - 20) { s.logicalX = 20; }
+        api.say('<strong>UPDATE.</strong> The square’s x changed to <code>' +
+                Math.round(s.logicalX) + '</code>. Look closely: the picture is still ' +
+                'showing the OLD position. The number moved; the pixels have not.');
+
+      } else {
+        // RENDER copies the logical position onto the screen, then the frame ends.
+        s.drawnX = s.logicalX;
+        s.frame += 1;
+        s.tape.push(Math.round(s.drawnX));
+        if (s.tape.length > 14) { s.tape.shift(); }
+        api.say('<strong>RENDER.</strong> The screen is erased and the square is drawn at its ' +
+                'new place. Frame ' + s.frame + ' is finished. Now the loop starts over.');
+      }
+    },
+
+    onReset: function (s, api) {
+      api.say('Nothing has happened yet. Press <strong>Step 1 frame</strong> to do the first job.');
+    },
+
+    draw: function (s, g, api) {
+      var T = g.color;
+      g.clear();
+
+      g.text('ONE TRIP AROUND THE LOOP = ONE FRAME', 28, 36,
+        { size: 15, bold: true, color: T.muted });
+      g.text('frame ' + s.frame, 872, 36,
+        { size: 20, bold: true, align: 'right', color: T.accent, mono: true });
+
+      /* ---- the three phase boxes ---- */
+      for (var i = 0; i < 3; i++) {
+        var y = BOX_Y0 + i * (BOX_H + BOX_GAP);
+        var active = (i === s.phaseIndex);
+        var done = (s.phaseIndex > i);
+
+        g.panel(BOX_X, y, BOX_W, BOX_H, active ? T.accent : T.panel, 10);
+        if (!active) {
+          g.ctx.save();
+          g.ctx.setLineDash(done ? [] : [5, 5]);
+          g.strokeRect(BOX_X, y, BOX_W, BOX_H, done ? T.accent : T.grid, 2);
+          g.ctx.restore();
+        }
+
+        var fg = active ? T.bg : T.ink;
+        g.text(PHASES[i].name, BOX_X + 20, y + 40, { size: 26, bold: true, color: fg });
+        g.text(PHASES[i].blurb, BOX_X + 20, y + 68,
+          { size: 14, color: active ? T.bg : T.muted });
+
+        // A step number so the order is unmistakable.
+        g.circle(BOX_X + BOX_W - 32, y + 32, 16, active ? T.bg : T.grid);
+        g.text(String(i + 1), BOX_X + BOX_W - 32, y + 38,
+          { size: 17, bold: true, align: 'center', color: active ? T.accent : T.muted });
+
+        // Downward arrow to the next box.
+        if (i < 2) {
+          g.arrow(BOX_X + BOX_W / 2, y + BOX_H + 3,
+                  BOX_X + BOX_W / 2, y + BOX_H + BOX_GAP - 4, T.muted, 3);
+        }
+      }
+
+      /* ---- the loop-back arrow: the whole point of the word "loop" ---- */
+      var topY = BOX_Y0, botY = BOX_Y0 + 2 * (BOX_H + BOX_GAP) + BOX_H;
+      var lx = BOX_X - 16;
+      var ctx = g.ctx;
+      ctx.save();
+      ctx.strokeStyle = T.accent2;
+      ctx.lineWidth = 3;
+      ctx.setLineDash([7, 5]);
+      ctx.beginPath();
+      ctx.moveTo(BOX_X + 10, botY + 8);
+      ctx.bezierCurveTo(lx - 34, botY + 24, lx - 34, topY - 26, BOX_X + 10, topY - 10);
+      ctx.stroke();
+      ctx.restore();
+      g.arrow(BOX_X - 6, topY - 14, BOX_X + 22, topY - 5, T.accent2, 3);
+      g.text('and again,', lx - 30, (topY + botY) / 2 - 8,
+        { size: 13, bold: true, align: 'center', color: T.accent2 });
+      g.text('forever', lx - 30, (topY + botY) / 2 + 10,
+        { size: 13, bold: true, align: 'center', color: T.accent2 });
+
+      /* ---- the game screen ---- */
+      g.text('WHAT THE PLAYER SEES', SCREEN_X, SCREEN_Y - 14,
+        { size: 13, bold: true, color: T.muted });
+      g.rect(SCREEN_X, SCREEN_Y, SCREEN_W, SCREEN_H, T.panel);
+      g.strokeRect(SCREEN_X, SCREEN_Y, SCREEN_W, SCREEN_H, T.grid, 2);
+
+      // The ghost shows where UPDATE has already moved the square to, while the
+      // solid square is what is actually on screen. During UPDATE the two are
+      // apart, and that gap is the lesson.
+      if (Math.abs(s.logicalX - s.drawnX) > 0.5) {
+        ctx.save();
+        ctx.globalAlpha = 0.33;
+        g.rect(SCREEN_X + s.logicalX, SCREEN_Y + 108, PLAYER_SIZE, PLAYER_SIZE, T.accent);
+        ctx.restore();
+        g.dashed(SCREEN_X + s.drawnX + PLAYER_SIZE, SCREEN_Y + 125,
+                 SCREEN_X + s.logicalX, SCREEN_Y + 125, T.accent2, 2, [4, 4]);
+        g.text('x is already here', SCREEN_X + s.logicalX + PLAYER_SIZE / 2, SCREEN_Y + 100,
+          { size: 12, bold: true, align: 'center', color: T.accent2 });
+      }
+      g.rect(SCREEN_X + s.drawnX, SCREEN_Y + 108, PLAYER_SIZE, PLAYER_SIZE, T.ink);
+
+      // Ground line, so movement is obvious.
+      g.line(SCREEN_X + 12, SCREEN_Y + 108 + PLAYER_SIZE + 6,
+             SCREEN_X + SCREEN_W - 12, SCREEN_Y + 108 + PLAYER_SIZE + 6, T.grid, 2);
+
+      /* ---- the key being held ---- */
+      var keyX = SCREEN_X + 18, keyY = SCREEN_Y + SCREEN_H - 52;
+      var keyLit = s.keyHeld && s.phaseIndex >= 0;
+      g.panel(keyX, keyY, 46, 38, keyLit ? T.good : T.grid, 6);
+      g.text('→', keyX + 23, keyY + 27,
+        { size: 22, bold: true, align: 'center', color: keyLit ? T.bg : T.muted });
+      g.text(keyLit ? 'right arrow is held down' : 'no key read yet',
+        keyX + 58, keyY + 24, { size: 13, color: T.muted });
+
+      /* ---- the filmstrip of finished frames ---- */
+      g.text('FINISHED FRAMES  (each cell is one complete trip around the loop)',
+        28, TAPE_Y - 10, { size: 13, bold: true, color: T.muted });
+      var cellW = 58, cellGap = 4;
+      for (var k = 0; k < 14; k++) {
+        var cx = 28 + k * (cellW + cellGap);
+        var filled = k < s.tape.length;
+        g.rect(cx, TAPE_Y, cellW, TAPE_H, filled ? T.panel : 'transparent');
+        g.strokeRect(cx, TAPE_Y, cellW, TAPE_H, T.grid, 1);
+        if (filled) {
+          // A tiny thumbnail: the square where it was on that frame.
+          var frac = s.tape[k] / SCREEN_W;
+          g.rect(cx + 4 + frac * (cellW - 16), TAPE_Y + 34, 11, 11, T.ink);
+          g.line(cx + 4, TAPE_Y + 48, cx + cellW - 4, TAPE_Y + 48, T.grid, 1);
+          g.text('x=' + s.tape[k], cx + cellW / 2, TAPE_Y + 20,
+            { size: 11, align: 'center', color: T.muted, mono: true });
+        }
+      }
+    }
+  });
+
+}());
+</script>
+</body>
+</html>

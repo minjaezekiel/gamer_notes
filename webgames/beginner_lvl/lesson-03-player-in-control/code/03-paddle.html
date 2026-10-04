@@ -1,0 +1,103 @@
+<!doctype html>
+<!-- ==========================================================================
+     03 - The paddle  (the finished lesson 3 result)
+     Lesson 3, Web Games, Beginner
+
+     WHAT THIS SHOWS:  Polled input, movement in update() with delta time, and
+                       clamping so the paddle cannot leave the screen.
+     RUN IT:           Double-click, click the canvas, then use the arrow keys
+                       or A and D.
+     CHANGE ME FIRST:  PADDLE_SPEED on line 44. It is in pixels per SECOND.
+     COMPARE:          01-the-wrong-way.html. Same game, no stutter.
+     ========================================================================== -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>03 - The paddle</title>
+<style>
+  body { background:#f0f0f0; font-family:system-ui, sans-serif;
+         display:flex; flex-direction:column; align-items:center; padding:24px; }
+  canvas { border:2px solid #888; }
+  p { max-width:600px; }
+  .warn { color:#a00; font-weight:bold; }
+</style>
+</head>
+<body>
+
+<h1>03 - A paddle you steer</h1>
+<canvas id="game" width="600" height="400"></canvas>
+<p>Arrow keys, or A and D. Smooth, instant, and it stops at the edges.</p>
+
+<script>
+  const canvas = document.getElementById("game");
+  const ctx = canvas.getContext("2d");
+
+  // ---- STATE -----------------------------------------------------------
+  const paddle = { x: 260, y: 350, width: 80, height: 14 };
+  const PADDLE_SPEED = 420;      // pixels per SECOND
+  let lastTime = 0;
+
+  // ---- INPUT: record only ----------------------------------------------
+  const keys = {};
+  document.addEventListener("keydown", function (event) {
+    keys[event.key] = true;
+    if (event.key.startsWith("Arrow")) { event.preventDefault(); }
+  });
+  document.addEventListener("keyup", function (event) {
+    keys[event.key] = false;
+  });
+
+  // ---- UPDATE: all movement happens here -------------------------------
+  function update(dt) {
+    // Turn KEYBOARD FACTS into GAME INTENTIONS, in one place. Because of these
+    // two lines the game supports arrow keys and WASD, and update() below never
+    // has to mention a key name again. Adding a gamepad later means editing
+    // only these lines.
+    const wantsLeft  = keys["ArrowLeft"]  || keys["a"] || keys["A"];
+    const wantsRight = keys["ArrowRight"] || keys["d"] || keys["D"];
+
+    if (wantsRight) {
+      paddle.x = paddle.x + PADDLE_SPEED * dt;
+    }
+    if (wantsLeft) {
+      paddle.x = paddle.x - PADDLE_SPEED * dt;
+    }
+
+    // ---- CLAMP: keep the paddle on the screen ----
+    // Same idea as clamping dt in lesson 2: force a number inside sane limits.
+    if (paddle.x < 0) {
+      paddle.x = 0;
+    }
+    if (paddle.x + paddle.width > canvas.width) {
+      paddle.x = canvas.width - paddle.width;
+    }
+  }
+
+  function render() {
+    ctx.fillStyle = "#222";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    ctx.fillStyle = "#4a9eff";
+    ctx.fillRect(paddle.x, paddle.y, paddle.width, paddle.height);
+
+    ctx.fillStyle = "#777";
+    ctx.font = "14px system-ui, sans-serif";
+    ctx.fillText("arrow keys or A / D", 20, 30);
+  }
+
+  function frame(currentTime) {
+    if (!lastTime) { lastTime = currentTime; }
+    let dt = (currentTime - lastTime) / 1000;
+    lastTime = currentTime;
+    if (dt > 0.1) { dt = 1 / 60; }
+
+    update(dt);         // input is READ here, every frame
+    render();
+    requestAnimationFrame(frame);
+  }
+
+  requestAnimationFrame(frame);
+</script>
+
+</body>
+</html>

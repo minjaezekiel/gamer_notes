@@ -1,0 +1,94 @@
+<!doctype html>
+<!-- ==========================================================================
+     02 - Working out dt
+     Lesson 2, Web Games, Beginner
+
+     WHAT THIS SHOWS:  How to get delta time out of requestAnimationFrame, and
+                       why you MUST clamp it.
+     RUN IT:           Double-click this file. Watch the readout.
+     CHANGE ME FIRST:  Comment out the clamping line (the one with 0.1) and
+                       reload. Watch the square teleport on the very first
+                       frame. Then switch to another tab for ten seconds and
+                       come back.
+     ========================================================================== -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>02 - Delta time</title>
+<style>
+  body { background:#f0f0f0; font-family:system-ui, sans-serif;
+         display:flex; flex-direction:column; align-items:center; padding:24px; }
+  canvas { border:2px solid #888; }
+  p { max-width:600px; }
+</style>
+</head>
+<body>
+
+<h1>02 - Working out dt</h1>
+<canvas id="game" width="600" height="260"></canvas>
+<p>The numbers on screen are the real frame times from your actual browser,
+right now. Watch how much they wobble.</p>
+
+<script>
+  const canvas = document.getElementById("game");
+  const ctx = canvas.getContext("2d");
+
+  let x = 20;
+  const SPEED = 150;        // pixels per SECOND
+
+  // lastTime holds the timestamp of the PREVIOUS frame, so we can work out how
+  // long ago it was. It starts at 0 because there has not been one yet.
+  let lastTime = 0;
+  let longestSeen = 0;
+
+  function update(dt) {
+    x = x + SPEED * dt;
+    if (x > 600) { x = -40; }
+  }
+
+  function render(dt) {
+    ctx.fillStyle = "#222";
+    ctx.fillRect(0, 0, 600, 260);
+
+    ctx.fillStyle = "#4a9eff";
+    ctx.fillRect(x, 40, 40, 40);
+
+    ctx.fillStyle = "#ddd";
+    ctx.font = "15px ui-monospace, Menlo, monospace";
+    ctx.fillText("dt            = " + dt.toFixed(4) + " seconds", 20, 140);
+    ctx.fillText("frames/second = " + Math.round(1 / dt), 20, 166);
+    ctx.fillText("this frame    = " + (SPEED * dt).toFixed(2) + " px moved", 20, 192);
+    ctx.fillText("longest dt    = " + longestSeen.toFixed(4) + " s", 20, 218);
+  }
+
+  // The browser passes the current time, in MILLISECONDS since the page loaded.
+  function frame(currentTime) {
+    // On the very first call lastTime is still 0, so without this line dt would
+    // be the whole page-load time - often several seconds.
+    if (!lastTime) { lastTime = currentTime; }
+
+    let dt = (currentTime - lastTime) / 1000;   // ms -> seconds
+    lastTime = currentTime;
+
+    // ---- THE CLAMP ----
+    // A frame longer than a tenth of a second means something unusual happened:
+    // the page just loaded, or this tab was in the background. Without this the
+    // square teleports. Comment it out and see.
+    if (dt > 0.1) { dt = 1 / 60; }
+
+    if (dt > longestSeen) { longestSeen = dt; }
+
+    update(dt);
+    render(dt);
+    requestAnimationFrame(frame);
+  }
+
+  // NOTE: requestAnimationFrame(frame), not frame().
+  // Calling frame() directly would mean currentTime is undefined, dt becomes
+  // NaN, and NaN spreads through every sum it touches - the square would vanish
+  // and never come back.
+  requestAnimationFrame(frame);
+</script>
+
+</body>
+</html>

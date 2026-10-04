@@ -1,0 +1,138 @@
+<!doctype html>
+<!-- ==========================================================================
+     03 - Tunnelling: when a correct test still misses
+     Lesson 4, Web Games, Beginner
+
+     This file is DELIBERATELY BROKEN - except the collision test is perfectly
+     correct. That is the point.
+
+     WHAT THIS SHOWS:  A ball moving fast enough to be IN FRONT of the wall on
+                       one frame and BEHIND it on the next, without ever being
+                       inside it. The test was never asked at the right moment.
+     RUN IT:           Double-click. Use the slider.
+     TRY THIS:         At speed 300 the ball bounces reliably. Drag the speed up
+                       to 3000 and watch it pass straight through. The code did
+                       not change.
+     ========================================================================== -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>03 - Tunnelling</title>
+<style>
+  body { background:#f0f0f0; font-family:system-ui, sans-serif;
+         display:flex; flex-direction:column; align-items:center; padding:24px; }
+  canvas { border:2px solid #888; }
+  p { max-width:620px; }
+  .controls { margin-top:12px; font-size:15px; }
+  button { font:inherit; padding:6px 14px; }
+</style>
+</head>
+<body>
+
+<h1>03 - Tunnelling</h1>
+<canvas id="game" width="620" height="300"></canvas>
+<div class="controls">
+  Ball speed
+  <input id="speed" type="range" min="200" max="4000" step="100" value="400">
+  <output id="speedOut">400</output> px/sec
+  <button id="reset">Reset ball</button>
+</div>
+<p>The collision test in this file is completely correct. Raise the speed anyway.</p>
+
+<script>
+  const canvas = document.getElementById("game");
+  const ctx = canvas.getContext("2d");
+  const speedInput = document.getElementById("speed");
+  const speedOut = document.getElementById("speedOut");
+
+  const wall = { x: 420, y: 60, w: 14, h: 180 };
+  let ball = { x: 40, y: 150, radius: 12, speedX: 400 };
+  let lastTime = 0;
+  let passedThrough = false;
+  let previousX = ball.x;
+
+  function boxesOverlap(a, b) {
+    return a.x < b.x + b.w && a.x + a.w > b.x &&
+           a.y < b.y + b.h && a.y + a.h > b.y;
+  }
+  function ballBox(b) {
+    return { x: b.x - b.radius, y: b.y - b.radius, w: b.radius * 2, h: b.radius * 2 };
+  }
+
+  function resetBall() {
+    ball = { x: 40, y: 150, radius: 12, speedX: Number(speedInput.value) };
+    passedThrough = false;
+    previousX = ball.x;
+  }
+  document.getElementById("reset").addEventListener("click", resetBall);
+  speedInput.addEventListener("input", function () {
+    speedOut.textContent = speedInput.value;
+    resetBall();
+  });
+
+  function update(dt) {
+    previousX = ball.x;
+    ball.x = ball.x + ball.speedX * dt;
+
+    // A perfectly correct AABB test.
+    if (boxesOverlap(ballBox(ball), wall)) {
+      ball.x = wall.x - ball.radius;
+      ball.speedX = -ball.speedX;
+    }
+
+    // Did the ball get from one side of the wall to the other without the test
+    // ever firing? That is tunnelling.
+    if (previousX < wall.x && ball.x > wall.x + wall.w) {
+      passedThrough = true;
+    }
+
+    if (ball.x > canvas.width + 50 || ball.x < -50) { resetBall(); }
+  }
+
+  function render(dt) {
+    ctx.fillStyle = "#222";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    ctx.fillStyle = "#888";
+    ctx.fillRect(wall.x, wall.y, wall.w, wall.h);
+
+    // show how far the ball travels in ONE frame
+    const stepSize = Math.abs(ball.speedX) * dt;
+    ctx.strokeStyle = "#555";
+    ctx.setLineDash([4, 4]);
+    ctx.beginPath();
+    ctx.moveTo(ball.x - stepSize, 40);
+    ctx.lineTo(ball.x, 40);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    ctx.fillStyle = passedThrough ? "#ff6b6b" : "#4a9eff";
+    ctx.beginPath();
+    ctx.arc(ball.x, ball.y, ball.radius, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.font = "14px ui-monospace, Menlo, monospace";
+    ctx.fillStyle = "#aaa";
+    ctx.fillText("one frame moves the ball " + stepSize.toFixed(0) + " px", 20, 36);
+    ctx.fillText("the wall is only " + wall.w + " px thick", 20, 58);
+    if (passedThrough) {
+      ctx.fillStyle = "#ff6b6b";
+      ctx.font = "bold 18px system-ui, sans-serif";
+      ctx.fillText("WENT STRAIGHT THROUGH", 20, 282);
+    }
+  }
+
+  function frame(currentTime) {
+    if (!lastTime) { lastTime = currentTime; }
+    let dt = (currentTime - lastTime) / 1000;
+    lastTime = currentTime;
+    if (dt > 0.1) { dt = 1 / 60; }
+    update(dt);
+    render(dt);
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+</script>
+
+</body>
+</html>

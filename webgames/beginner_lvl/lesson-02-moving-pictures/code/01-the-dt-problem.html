@@ -1,0 +1,131 @@
+<!doctype html>
+<!-- ==========================================================================
+     01 - The problem, made visible
+     Lesson 2, Web Games, Beginner
+
+     WHAT THIS SHOWS:  Two squares. The top one moves "2 pixels per frame", the
+                       lesson 1 way. The bottom one moves "120 pixels per
+                       second", the correct way.
+     RUN IT:           Double-click this file.
+     CHANGE ME FIRST:  The frame-rate slider under the canvas. Drag it to 20 and
+                       press Reset. Watch the top square fall behind. NOBODY
+                       CHANGED ITS SPEED - only the computer changed.
+     ========================================================================== -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>01 - The delta time problem</title>
+<style>
+  body { background:#f0f0f0; font-family:system-ui, sans-serif;
+         display:flex; flex-direction:column; align-items:center; padding:24px; }
+  canvas { border:2px solid #888; }
+  p, .controls { max-width:600px; }
+  .controls { margin-top:12px; font-size:15px; }
+  button { font:inherit; padding:6px 14px; }
+</style>
+</head>
+<body>
+
+<h1>01 - Why "per frame" is a bug</h1>
+<canvas id="game" width="600" height="300"></canvas>
+
+<div class="controls">
+  <label>
+    Pretend this computer runs at
+    <input id="fps" type="range" min="10" max="120" step="10" value="60">
+    <output id="fpsOut">60</output> frames per second
+  </label>
+  <button id="reset">Reset</button>
+</div>
+
+<p>Both squares were told to cross at the same speed. Drag the slider away from
+60 and press Reset.</p>
+
+<script>
+  const canvas = document.getElementById("game");
+  const ctx = canvas.getContext("2d");
+  const fpsInput = document.getElementById("fps");
+  const fpsOut = document.getElementById("fpsOut");
+
+  const START_X = 20;
+  const PER_FRAME  = 2;      // "2 pixels every frame"   - the lesson 1 way
+  const PER_SECOND = 120;    // "120 pixels every second" - the correct way
+  // These two agree ONLY at 60 fps, because 2 x 60 = 120. That coincidence is
+  // exactly why the bug hides on the machine you wrote the game on.
+
+  let badX, goodX, accumulated, lastTime;
+
+  function reset() {
+    badX = START_X;
+    goodX = START_X;
+    accumulated = 0;
+    lastTime = 0;
+  }
+  reset();
+
+  function update(dt) {
+    const fps = Number(fpsInput.value);
+    const frameLength = 1 / fps;      // how long ONE pretend frame lasts
+
+    // Only run a pretend game frame when enough real time has gone by. This is
+    // how we simulate a slow (or very fast) computer on your actual machine.
+    accumulated = accumulated + dt;
+    let guard = 0;
+    while (accumulated >= frameLength && guard < 200) {
+      accumulated = accumulated - frameLength;
+      guard = guard + 1;
+
+      badX  = badX  + PER_FRAME;                 // counts frames. Wrong.
+      goodX = goodX + PER_SECOND * frameLength;  // measures time. Right.
+    }
+
+    if (badX > 560) { badX = 560; }
+    if (goodX > 560) { goodX = 560; }
+  }
+
+  function render() {
+    const fps = Number(fpsInput.value);
+
+    ctx.fillStyle = "#222";
+    ctx.fillRect(0, 0, 600, 300);
+
+    // finish line
+    ctx.fillStyle = "#555";
+    ctx.fillRect(560, 0, 2, 300);
+
+    ctx.font = "13px system-ui, sans-serif";
+
+    // the frame-counting one
+    ctx.fillStyle = "#ff6b6b";
+    ctx.fillRect(badX, 60, 40, 40);
+    ctx.fillText("x = x + 2        (per FRAME)  -> " + (PER_FRAME * fps) + " px/sec",
+                 20, 40);
+
+    // the time-measuring one
+    ctx.fillStyle = "#51cf66";
+    ctx.fillRect(goodX, 190, 40, 40);
+    ctx.fillText("x = x + 120 * dt (per SECOND) -> 120 px/sec, always",
+                 20, 170);
+  }
+
+  function frame(currentTime) {
+    if (!lastTime) { lastTime = currentTime; }
+    let dt = (currentTime - lastTime) / 1000;
+    lastTime = currentTime;
+    if (dt > 0.1) { dt = 1 / 60; }       // clamp: see 02-delta-time.html
+
+    update(dt);
+    render();
+    requestAnimationFrame(frame);
+  }
+
+  fpsInput.addEventListener("input", function () {
+    fpsOut.textContent = fpsInput.value;
+  });
+  document.getElementById("reset").addEventListener("click", reset);
+
+  requestAnimationFrame(frame);
+</script>
+
+</body>
+</html>

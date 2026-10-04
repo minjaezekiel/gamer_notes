@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Visualizer Gallery</title>
+<meta name="description" content="Every animated concept explainer in the Game Dev Bootcamp, in teaching order. Open this at the start of class.">
+<link rel="stylesheet" href="../css/notes.css">
+<link rel="stylesheet" href="../css/code.css">
+</head>
+<body>
+<div class="wrap">
+
+  <header class="lesson-head">
+    <p class="kicker">Game Dev Bootcamp &middot; Teacher launcher</p>
+    <h1>Visualizer Gallery</h1>
+    <p class="meta">Nine animated explainers. Open this page at the start of class and project from here.</p>
+  </header>
+
+  <p class="lede">These explainers are <strong>language-neutral</strong>. The game loop, delta time and
+  collision are the same ideas in JavaScript, Python and C++, so there is one explainer each and all
+  three tracks link to it. Whichever language your class is coding in today, you project from this
+  page.</p>
+
+  <div class="box box-goal">
+    <span class="box-label">How to drive these in class</span>
+    <ul>
+      <li>Click the widget once, then use the keyboard from anywhere in the room:
+        <span class="kbd">Space</span> plays and pauses,
+        <span class="kbd">&rarr;</span> steps one frame,
+        <span class="kbd">R</span> resets.
+        A presenter remote usually sends those keys, so you can walk around.</li>
+      <li><strong>Always step before you play.</strong> Students who watch it animate first see a
+        pretty picture. Students who step through it frame by frame see a mechanism.</li>
+      <li>Ask a student to <strong>predict</strong> what the next frame will look like, then press Step.
+        Being wrong once is worth more than ten minutes of explanation.</li>
+      <li>These work with the Wi-Fi switched off. Nothing loads from the internet.</li>
+      <li>Light or dark is remembered per machine with the button in the top-right corner. Dark
+        usually projects better in a bright room.</li>
+    </ul>
+  </div>
+
+  <h2>In teaching order</h2>
+
+  <ul class="gallery">
+    <li><a href="game-loop.html">
+      <h3>1. The Game Loop</h3>
+      <p>Input, update, render, repeat. One Step press does one job, so three presses make a frame.
+      The foundation everything else sits on.</p>
+      <span class="where">web L1 &middot; python L1 &middot; c++ L1</span>
+    </a></li>
+
+    <li><a href="coordinates.html">
+      <h3>2. Screen Coordinates</h3>
+      <p>Y points <em>down</em>. Two grids side by side, one draggable dot, and the moment a student
+      sees one number rise while the other falls.</p>
+      <span class="where">web L2 &middot; python L2 &middot; c++ L3</span>
+    </a></li>
+
+    <li><a href="delta-time.html">
+      <h3>3. Delta Time</h3>
+      <p>Two balls race at the same intended speed. Drag the frame rate to 20 and one of them falls
+      apart. The best five seconds in the whole course.</p>
+      <span class="where">web L2 &middot; python L3 &middot; c++ L3</span>
+    </a></li>
+
+    <li><a href="gravity-and-velocity.html">
+      <h3>4. Gravity, Velocity, Position</h3>
+      <p>A chain of two additions, with a live table of the numbers. Shows why a jump needs no jump
+      code at all.</p>
+      <span class="where">web L2 and L6 &middot; python L5 &middot; c++ L5</span>
+    </a></li>
+
+    <li><a href="vectors.html">
+      <h3>5. Vectors</h3>
+      <p>Drag two arrows, add them head to tail, and shrink one to length 1. Includes the
+      subtract-normalise-scale recipe behind every chasing enemy.</p>
+      <span class="where">web L2 (lightly) &middot; all intermediate tracks</span>
+    </a></li>
+
+    <li><a href="aabb-collision.html">
+      <h3>6. Box Collision (AABB)</h3>
+      <p>Four conditions, each with its own light. Students hunt for the position where exactly one is
+      red, which is the bug they would otherwise ship.</p>
+      <span class="where">web L4 &middot; python L4 &middot; c++ L4</span>
+    </a></li>
+
+    <li><a href="circle-collision.html">
+      <h3>7. Circle Collision</h3>
+      <p>Pythagoras doing a real job, with the right-angled triangle drawn on screen. Includes the
+      skip-the-square-root trick.</p>
+      <span class="where">web L4 &middot; python L4 &middot; c++ L5</span>
+    </a></li>
+
+    <li><a href="state-machine.html">
+      <h3>8. Game States</h3>
+      <p>Clickable menu / playing / paused / game over. The lesson lands when a press gets
+      <em>ignored</em> and the class realises that is correct.</p>
+      <span class="where">web L5 &middot; python L6 &middot; c++ L6</span>
+    </a></li>
+
+    <li><a href="tilemap-indexing.html">
+      <h3>9. Grids and Flat Arrays</h3>
+      <p>A grid is really one long line. Colour-banded strip plus the two formulas,
+      <code>y*WIDTH+x</code> and its reverse.</p>
+      <span class="where">c++ L3 and L4 &middot; python L4 &middot; web L6</span>
+    </a></li>
+  </ul>
+
+  <h2>Which explainer for which lesson</h2>
+
+  <div class="table-scroll">
+  <table>
+    <thead>
+      <tr><th>Lesson</th><th>webgames</th><th>games_with_py</th><th>games_with_cpp</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><strong>L1</strong></td><td>game loop</td><td>game loop</td><td>game loop</td></tr>
+      <tr><td><strong>L2</strong></td><td>coordinates, delta time, gravity</td><td>coordinates</td><td>&mdash;</td></tr>
+      <tr><td><strong>L3</strong></td><td>&mdash;</td><td>delta time</td><td>coordinates, delta time, grids</td></tr>
+      <tr><td><strong>L4</strong></td><td>AABB, circles</td><td>AABB, circles, grids</td><td>AABB, grids</td></tr>
+      <tr><td><strong>L5</strong></td><td>state machine</td><td>gravity</td><td>circles, gravity</td></tr>
+      <tr><td><strong>L6</strong></td><td>gravity, grids</td><td>state machine</td><td>state machine</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <div class="box box-teacher">
+    <span class="box-label">If a visualizer will not open</span>
+    <p>These are plain files, so they need no server &mdash; double-clicking works. If a widget appears
+    but stays blank, the page cannot see <code>../js/anim.js</code>, which means the
+    <code>shared/</code> folder was moved or the file was copied out of the repository on its own.
+    Keep the folder structure intact and it will work.</p>
+  </div>
+
+  <p class="breadcrumb"><a href="../../README.md">&larr; Back to the course README</a></p>
+</div>
+
+<script src="../js/page.js"></script>
+<script src="../js/codeblock.js"></script>
+</body>
+</html>

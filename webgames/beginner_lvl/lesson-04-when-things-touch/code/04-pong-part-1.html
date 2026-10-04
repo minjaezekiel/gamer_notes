@@ -1,0 +1,216 @@
+<!doctype html>
+<!-- ==========================================================================
+     04 - Pong, part 1  (the finished lesson 4 result)
+     Lesson 4, Web Games, Beginner
+
+     WHAT THIS SHOWS:  Everything so far, assembled. The game loop (L1), delta
+                       time and bouncing (L2), polled input (L3), and collision
+                       (L4). There is no score and no way to win yet - that is
+                       lesson 5.
+     RUN IT:           Double-click, click the canvas, then use the arrow keys
+                       or W and S.
+     CHANGE ME FIRST:  STEER_STRENGTH on line 54. Set it to 0 and play a rally.
+                       Notice how much worse the game becomes when you cannot aim.
+     DEBUG VIEW:       Hold H to draw every hitbox.
+     ========================================================================== -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>04 - Pong, part 1</title>
+<style>
+  body { background:#f0f0f0; font-family:system-ui, sans-serif;
+         display:flex; flex-direction:column; align-items:center; padding:24px; }
+  canvas { border:2px solid #888; }
+  p { max-width:620px; }
+</style>
+</head>
+<body>
+
+<h1>04 - Pong, part 1</h1>
+<canvas id="game" width="620" height="400"></canvas>
+<p>Arrow keys or W/S. Hold <strong>H</strong> to see the hitboxes. The right-hand
+paddle follows the ball, badly, on purpose &mdash; lesson 5 makes it a real opponent.</p>
+
+<script>
+  const canvas = document.getElementById("game");
+  const ctx = canvas.getContext("2d");
+
+  // ---- STATE -----------------------------------------------------------
+  const ball = {
+    x: 310, y: 200, radius: 9,
+    speedX: -260, speedY: 140      // pixels per SECOND
+  };
+
+  // Paddles are plain boxes: x, y = top-left corner, plus a width and height.
+  const player   = { x: 22,  y: 160, w: 12, h: 80 };
+  const opponent = { x: 586, y: 160, w: 12, h: 80 };
+
+  const PADDLE_SPEED = 420;
+  const STEER_STRENGTH = 320;   // how much the hit position bends the ball
+  let lastTime = 0;
+
+  // ---- INPUT -----------------------------------------------------------
+  const keys = {};
+  document.addEventListener("keydown", function (e) {
+    keys[e.key] = true;
+    if (e.key.startsWith("Arrow")) { e.preventDefault(); }
+  });
+  document.addEventListener("keyup", function (e) { keys[e.key] = false; });
+
+  // ---- COLLISION -------------------------------------------------------
+  // The four conditions. Write this once; use it everywhere.
+  function boxesOverlap(a, b) {
+    return (
+      a.x < b.x + b.w &&
+      a.x + a.w > b.x &&
+      a.y < b.y + b.h &&
+      a.y + a.h > b.y
+    );
+  }
+
+  // The ball is DRAWN as a circle but COLLIDES as a square. That is the hitbox
+  // idea: the shape you test does not have to be the shape you see. At this
+  // size nobody will ever notice.
+  function ballBox() {
+    return {
+      x: ball.x - ball.radius,
+      y: ball.y - ball.radius,
+      w: ball.radius * 2,
+      h: ball.radius * 2
+    };
+  }
+
+  // ---- UPDATE ----------------------------------------------------------
+  function update(dt) {
+    // --- the player's paddle ---
+    const wantsUp   = keys["ArrowUp"]   || keys["w"] || keys["W"];
+    const wantsDown = keys["ArrowDown"] || keys["s"] || keys["S"];
+    if (wantsUp)   { player.y -= PADDLE_SPEED * dt; }
+    if (wantsDown) { player.y += PADDLE_SPEED * dt; }
+    clampPaddle(player);
+
+    // --- a very simple opponent ---
+    // It moves towards the ball but more slowly than the ball can travel, so it
+    // can be beaten. A perfect opponent would be unplayable.
+    const opponentCentre = opponent.y + opponent.h / 2;
+    if (ball.y < opponentCentre - 8) { opponent.y -= 260 * dt; }
+    if (ball.y > opponentCentre + 8) { opponent.y += 260 * dt; }
+    clampPaddle(opponent);
+
+    // --- the ball ---
+    ball.x += ball.speedX * dt;
+    ball.y += ball.speedY * dt;
+
+    // top and bottom walls (lesson 2)
+    if (ball.y - ball.radius < 0) {
+      ball.y = ball.radius;
+      ball.speedY = -ball.speedY;
+    }
+    if (ball.y + ball.radius > canvas.height) {
+      ball.y = canvas.height - ball.radius;
+      ball.speedY = -ball.speedY;
+    }
+
+    // --- paddle collisions ---
+    if (boxesOverlap(ballBox(), player) && ball.speedX < 0) {
+      // The "&& ball.speedX < 0" stops the ball getting re-caught on the frame
+      // after a hit, when it is still briefly overlapping but already leaving.
+      bounceOffPaddle(player, +1);
+    }
+    if (boxesOverlap(ballBox(), opponent) && ball.speedX > 0) {
+      bounceOffPaddle(opponent, -1);
+    }
+
+    // off the end: just put it back in the middle. Lesson 5 turns this into
+    // a point being scored.
+    if (ball.x < -30 || ball.x > canvas.width + 30) {
+      ball.x = canvas.width / 2;
+      ball.y = canvas.height / 2;
+      ball.speedX = ball.x < canvas.width / 2 ? 260 : -260;
+      ball.speedY = 140;
+    }
+  }
+
+  function bounceOffPaddle(paddle, direction) {
+    // 1. PUT THE BALL BACK somewhere legal, just outside the paddle.
+    //    Position first, velocity second - same rule as the walls in lesson 2.
+    //    Skip this and the ball sticks inside the paddle, vibrating.
+    ball.x = (direction > 0)
+      ? paddle.x + paddle.w + ball.radius
+      : paddle.x - ball.radius;
+
+    // 2. Send it back the other way.
+    ball.speedX = Math.abs(ball.speedX) * direction;
+
+    // 3. STEER IT. Where on the paddle did we hit?
+    //    -1 is the very top, 0 is the middle, +1 is the very bottom.
+    const paddleCentre = paddle.y + paddle.h / 2;
+    const hitOffset = (ball.y - paddleCentre) / (paddle.h / 2);
+    ball.speedY = hitOffset * STEER_STRENGTH;
+
+    // This is not how a real ball behaves. It is BETTER than how a real ball
+    // behaves, because it hands the player control. Without it Pong is a game
+    // about standing in the right place; with it, it is a game about aiming.
+  }
+
+  function clampPaddle(p) {
+    if (p.y < 0) { p.y = 0; }
+    if (p.y + p.h > canvas.height) { p.y = canvas.height - p.h; }
+  }
+
+  // ---- RENDER ----------------------------------------------------------
+  function render() {
+    ctx.fillStyle = "#15181d";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // centre line
+    ctx.strokeStyle = "#333";
+    ctx.lineWidth = 2;
+    ctx.setLineDash([10, 12]);
+    ctx.beginPath();
+    ctx.moveTo(canvas.width / 2, 0);
+    ctx.lineTo(canvas.width / 2, canvas.height);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    ctx.fillStyle = "#4a9eff";
+    ctx.fillRect(player.x, player.y, player.w, player.h);
+    ctx.fillStyle = "#ff9246";
+    ctx.fillRect(opponent.x, opponent.y, opponent.w, opponent.h);
+
+    ctx.fillStyle = "#eee";
+    ctx.beginPath();
+    ctx.arc(ball.x, ball.y, ball.radius, 0, Math.PI * 2);
+    ctx.fill();
+
+    // ---- DEBUG VIEW ----
+    // Hold H to draw every hitbox. Real developers do exactly this; it will
+    // save you a lot of time in lesson 6.
+    if (keys["h"] || keys["H"]) {
+      ctx.strokeStyle = "#51cf66";
+      ctx.lineWidth = 1;
+      const b = ballBox();
+      ctx.strokeRect(b.x, b.y, b.w, b.h);
+      ctx.strokeRect(player.x, player.y, player.w, player.h);
+      ctx.strokeRect(opponent.x, opponent.y, opponent.w, opponent.h);
+      ctx.fillStyle = "#51cf66";
+      ctx.font = "12px ui-monospace, Menlo, monospace";
+      ctx.fillText("hitboxes", 8, 14);
+    }
+  }
+
+  function frame(currentTime) {
+    if (!lastTime) { lastTime = currentTime; }
+    let dt = (currentTime - lastTime) / 1000;
+    lastTime = currentTime;
+    if (dt > 0.1) { dt = 1 / 60; }
+    update(dt);
+    render();
+    requestAnimationFrame(frame);
+  }
+
+  requestAnimationFrame(frame);
+</script>
+
+</body>
+</html>

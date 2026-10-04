@@ -1,0 +1,279 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gravity and Velocity</title>
+<meta name="description" content="Step a falling ball one frame at a time and watch acceleration feed velocity, and velocity feed position.">
+<link rel="stylesheet" href="../css/notes.css">
+<link rel="stylesheet" href="../css/code.css">
+</head>
+<body>
+<div class="wrap">
+
+  <p class="breadcrumb"><a href="index.html">&larr; All visualizers</a></p>
+
+  <header class="lesson-head">
+    <p class="kicker">Concept 4 and 6 &middot; Works for JavaScript, Python and C++</p>
+    <h1>Gravity, Velocity, Position</h1>
+    <p class="meta">Three numbers in a chain. Used in: web L2 and L6 &middot; python L5 &middot; c++ L5</p>
+  </header>
+
+  <p class="lede">Gravity in a game is not complicated physics. It is one line of code that adds a
+  small number to another small number, 60 times a second. The clever part is that there are
+  <strong>two</strong> levels of adding, not one.</p>
+
+  <div class="look-for">
+    <strong>What to look for</strong>
+    Press <span class="kbd">Step 1 frame</span> slowly and read the table. Each frame,
+    <strong>gravity is added to the velocity</strong>, and then <strong>the velocity is added to the
+    position</strong>. Watch the velocity number grow steadily while the <em>gaps</em> between the ball&rsquo;s
+    positions grow faster and faster. That is why falling feels like falling.
+  </div>
+
+  <div id="gravDemo"></div>
+
+  <h2>The chain, in three lines</h2>
+
+  <div class="code" data-lang="js" data-file="physics.js" data-hl="5,8,11">
+<pre><code>// Gravity is an ACCELERATION: a change in speed, not a speed.
+// It never changes. It is a constant of your game world.
+const GRAVITY = 900;          // pixels per second, per second
+
+// 1. Gravity changes the VELOCITY.
+ball.vy = ball.vy + GRAVITY * dt;
+
+// 2. The velocity changes the POSITION.
+ball.y = ball.y + ball.vy * dt;
+
+// 3. Hit the ground? Turn the velocity around, and lose a little energy.
+if (ball.y > groundY) {
+  ball.y = groundY;              // do not let it sink below the floor
+  ball.vy = ball.vy * -0.7;      // -1 would bounce forever; 0.7 keeps 70%
+}</code></pre>
+  </div>
+
+  <div class="box box-maths">
+    <span class="box-label">The physics you just used</span>
+    <p>Three words that get mixed up constantly:</p>
+    <ul>
+      <li><strong>Position</strong> &mdash; <em>where</em> it is. Measured in pixels.</li>
+      <li><strong>Velocity</strong> &mdash; <em>how fast, and which way</em>. Measured in pixels per
+      second. Negative means upward.</li>
+      <li><strong>Acceleration</strong> &mdash; <em>how fast the velocity is changing</em>. Measured
+      in pixels per second, <em>per second</em>.</li>
+    </ul>
+    <p>Each one is the rate of change of the one above. That is the entire idea, and it is also the
+    central idea of calculus &mdash; which you will meet in a few years, and will already understand,
+    because you will have built it.</p>
+    <p>Why &ldquo;per second per second&rdquo;? Because gravity does not say how fast you are going. It
+    says <em>your speed increases by 900 pixels per second, every second</em>. After one second you are
+    falling at 900. After two, at 1800.</p>
+  </div>
+
+  <div class="box box-goal">
+    <span class="box-label">Why a jump is the same code</span>
+    <p>There is no special jump code. A jump is just setting the velocity to a big negative number
+    once, and then letting the same two lines run:</p>
+    <div class="code" data-lang="js" data-numbers="off">
+<pre><code>if (jumpKeyPressed && ball.onGround) {
+  ball.vy = -500;        // one single push upward
+}
+// gravity then does the rest, every frame, with no extra code</code></pre>
+    </div>
+    <p>Gravity immediately starts adding to that <code>-500</code>, so it becomes <code>-480</code>,
+    then <code>-460</code>, until it passes through zero at the top of the arc and turns positive.
+    The ball slows down, stops, and falls &mdash; and you never wrote any of that. You got a realistic
+    arc for free. This is what people mean when they say a simulation &ldquo;emerges&rdquo; from simple
+    rules.</p>
+  </div>
+
+  <div class="box box-think">
+    <span class="box-label">Think like an engineer</span>
+    <p>Real gravity on Earth is about 9.8 metres per second per second. Our game uses 900 pixels per
+    second per second. These are not the same number and that is fine &mdash; but it raises a question:</p>
+    <p>Most platform games use gravity far <em>stronger</em> than real life, and make the player fall
+    faster than they rise. That is physically wrong, and it feels better. Why do you think that is?
+    Pick a platform game you know and try to describe its gravity in words. Then change
+    <code>GRAVITY</code> and the bounce factor in the demo above and find a combination that feels
+    <em>good</em> rather than correct.</p>
+  </div>
+
+  <div class="box box-vocab">
+    <span class="box-label">Vocabulary</span>
+    <ul>
+      <li><strong>Acceleration</strong> &mdash; the rate at which velocity changes.</li>
+      <li><strong>Constant</strong> &mdash; a number that never changes while the game runs. Written in
+      CAPITALS by convention, so a reader knows not to look for where it is modified.</li>
+      <li><strong>Restitution</strong> &mdash; the fancy name for the bounciness number. 1 means a
+      perfect bounce, 0 means it sticks.</li>
+      <li><strong>Terminal velocity</strong> &mdash; a speed cap, so a long fall does not become
+      impossible to control or tunnel through the floor.</li>
+    </ul>
+  </div>
+
+  <p class="breadcrumb"><a href="index.html">&larr; All visualizers</a></p>
+</div>
+
+<script src="../js/page.js"></script>
+<script src="../js/anim.js"></script>
+<script src="../js/codeblock.js"></script>
+<script>
+/* ---------------------------------------------------------------------------
+   A falling, bouncing ball with the numbers exposed.
+
+   The teaching device here is the TABLE OF RECENT FRAMES. Students can see that
+   velocity grows by the same amount each frame (because acceleration is
+   constant) while the change in position grows by MORE each frame. Seeing those
+   two columns side by side is what separates velocity from acceleration in a
+   student's head.
+   ------------------------------------------------------------------------ */
+(function () {
+  var WORLD_X = 24, WORLD_Y = 60, WORLD_W = 380, WORLD_H = 330;
+  var GROUND_Y = WORLD_Y + WORLD_H - 26;
+  var BALL_R = 16;
+  var TABLE_X = 436;
+
+  var gravitySlider, bounceSlider;
+
+  var sk = Anim.sketch({
+    mount: '#gravDemo',
+    width: 900, height: 430,
+    fps: 20,                     // slow on purpose, so stepping is readable
+    controls: ['play', 'step', 'reset', 'speed'],
+    showFrameCount: false,
+
+    state: function () {
+      return {
+        y: WORLD_Y + 40,
+        vy: 0,
+        trail: [],               // past positions, to show the gaps growing
+        rows: []                 // the numbers table
+      };
+    },
+
+    update: function (s, dt) {
+      var G = gravitySlider ? gravitySlider.value : 900;
+      var BOUNCE = bounceSlider ? bounceSlider.value / 100 : 0.7;
+      var before = s.y;
+
+      // THE WHOLE SIMULATION IS THESE TWO LINES.
+      s.vy = s.vy + G * dt;          // acceleration changes velocity
+      s.y  = s.y  + s.vy * dt;       // velocity changes position
+
+      var bounced = false;
+      if (s.y > GROUND_Y - BALL_R) {
+        s.y = GROUND_Y - BALL_R;
+        s.vy = s.vy * -BOUNCE;
+        bounced = true;
+        // Stop the endless tiny bouncing that otherwise jitters forever.
+        if (Math.abs(s.vy) < 25) { s.vy = 0; }
+      }
+
+      s.trail.push(s.y);
+      if (s.trail.length > 26) { s.trail.shift(); }
+
+      s.rows.push({ vy: s.vy, y: s.y, moved: s.y - before, bounced: bounced });
+      if (s.rows.length > 9) { s.rows.shift(); }
+    },
+
+    draw: function (s, g, api) {
+      var T = g.color;
+      var G = gravitySlider ? gravitySlider.value : 900;
+      g.clear();
+
+      /* ---- the world ---- */
+      g.rect(WORLD_X, WORLD_Y, WORLD_W, WORLD_H, T.panel);
+      g.strokeRect(WORLD_X, WORLD_Y, WORLD_W, WORLD_H, T.grid, 1);
+      g.rect(WORLD_X, GROUND_Y, WORLD_W, WORLD_Y + WORLD_H - GROUND_Y, T.grid);
+      g.text('GRAVITY = ' + G + ' px/s per s', WORLD_X, WORLD_Y - 14,
+        { size: 14, bold: true, color: T.ink, mono: true });
+
+      /* ---- the trail: each past position as a faint dot. The GAPS between the
+         dots are the real lesson - they get bigger as the ball speeds up. ---- */
+      var tx = WORLD_X + 96;
+      g.ctx.save();
+      for (var i = 0; i < s.trail.length; i++) {
+        g.ctx.globalAlpha = 0.12 + 0.5 * (i / s.trail.length);
+        g.circle(tx, s.trail[i], 5, T.muted);
+      }
+      g.ctx.restore();
+
+      /* ---- the ball ---- */
+      g.circle(tx, s.y, BALL_R, T.accent);
+
+      /* ---- the two arrows: acceleration (always the same) and velocity
+         (growing). Drawing them at different lengths is what makes the
+         difference between the two concepts visible. ---- */
+      var ax = tx + 78;
+      g.text('acceleration', ax + 14, s.y - 30, { size: 12, bold: true, color: T.bad });
+      g.text('(never changes)', ax + 14, s.y - 15, { size: 11, color: T.muted });
+      g.arrow(ax, s.y - 10, ax, s.y + 26, T.bad, 4);
+
+      var vx = tx + 190;
+      var vlen = Math.max(-120, Math.min(120, s.vy * 0.1));
+      g.text('velocity', vx + 14, s.y - 6, { size: 12, bold: true, color: T.good });
+      g.text(Math.round(s.vy) + ' px/s', vx + 14, s.y + 10, { size: 12, color: T.muted, mono: true });
+      if (Math.abs(vlen) > 2) { g.arrow(vx, s.y, vx, s.y + vlen, T.good, 4); }
+      else { g.circle(vx, s.y, 4, T.muted); }
+
+      /* ---- the numbers table ---- */
+      g.text('WHAT CHANGED, FRAME BY FRAME', TABLE_X, 30, { size: 14, bold: true, color: T.muted });
+      var cols = [
+        { t: 'frame',            x: TABLE_X + 4,   w: 56 },
+        { t: 'velocity (px/s)',  x: TABLE_X + 62,  w: 128 },
+        { t: 'y (px)',           x: TABLE_X + 194, w: 86 },
+        { t: 'moved by',         x: TABLE_X + 284, w: 96 }
+      ];
+      var headY = 56;
+      g.rect(TABLE_X, headY, 440, 28, T.panel);
+      cols.forEach(function (c) {
+        g.text(c.t, c.x + 6, headY + 19, { size: 12, bold: true, color: T.ink });
+      });
+
+      var startFrame = api.frame - s.rows.length + 1;
+      for (var r = 0; r < s.rows.length; r++) {
+        var row = s.rows[r];
+        var ry = headY + 28 + r * 30;
+        var isLast = (r === s.rows.length - 1);
+        if (isLast) { g.rect(TABLE_X, ry, 440, 30, T.accent); }
+        else if (r % 2) { g.rect(TABLE_X, ry, 440, 30, T.panel); }
+        var fg = isLast ? T.bg : T.ink;
+        g.text(String(startFrame + r), cols[0].x + 6, ry + 20,
+          { size: 13, color: isLast ? T.bg : T.muted, mono: true });
+        g.text(row.vy.toFixed(1), cols[1].x + 6, ry + 20,
+          { size: 13, bold: true, color: isLast ? T.bg : T.good, mono: true });
+        g.text(row.y.toFixed(1), cols[2].x + 6, ry + 20,
+          { size: 13, color: fg, mono: true });
+        g.text((row.moved >= 0 ? '+' : '') + row.moved.toFixed(1),
+          cols[3].x + 6, ry + 20,
+          { size: 13, bold: true, color: isLast ? T.bg : T.accent2, mono: true });
+        if (row.bounced) {
+          g.text('bounce', cols[3].x + 62, ry + 20,
+            { size: 11, bold: true, color: isLast ? T.bg : T.bad });
+        }
+      }
+
+      g.text('velocity grows by the SAME amount each frame → but "moved by" grows FASTER',
+        TABLE_X, 418, { size: 12.5, bold: true, color: T.muted });
+
+      api.say('Velocity is now <strong>' + Math.round(s.vy) + ' px/s</strong>. ' +
+              'Next frame, gravity will add about <code>' + (G / 20).toFixed(0) +
+              '</code> to it, and then that bigger velocity moves the ball further than last time.');
+    },
+
+    onReset: function (s, api) {
+      api.say('Press <strong>Step 1 frame</strong> and read the table from the bottom up.');
+    }
+  });
+
+  /* anim.js's own slider() helper is used rather than hand-built inputs,
+     because it redraws the canvas on change. That means dragging these while the
+     animation is PAUSED still updates the picture - without it, the sliders
+     would appear to do nothing until you pressed Play. */
+  gravitySlider = sk.slider('Gravity (px/s per s)', 200, 2000, 900, 100);
+  bounceSlider  = sk.slider('Bounciness (%)', 0, 100, 70, 5);
+}());
+</script>
+</body>
+</html>
