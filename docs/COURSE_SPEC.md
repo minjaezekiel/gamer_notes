@@ -181,7 +181,18 @@ with the student who finishes at minute 90.
   the program.
 - Every `code/` file opens with a comment block: what it demonstrates, how to run it, and what to
   change first.
-- Every file in `code/` **runs on its own.** No shared imports between lesson examples.
+- Every file in `code/` **runs on its own.** No shared imports between lesson examples — with one
+  deliberate exception, added for the intermediate levels:
+
+  > **One shared content module per lesson folder is allowed**, when every example in that lesson needs
+  > the same *content* (a spritesheet, a level, a tileset) and reproducing it four times would bury the
+  > idea each example is about. It must be named for what it holds (`spritesheet.py`, not `utils.py`),
+  > its header must say that it is shared and why, and it must contain **content, never lesson logic** —
+  > the thing being taught always stays in the numbered example. A student can still run any numbered
+  > example directly; it imports one neighbour.
+  >
+  > Multi-file *examples* (a folder like `03-the-whole-game/`) are a separate thing and have always been
+  > allowed: the lesson there **is** the file structure.
 - Numbered in teaching order: `01-...`, `02-...`.
 - Magic numbers are named constants at the top of the file, where a student can find and change them.
 

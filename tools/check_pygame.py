@@ -82,8 +82,10 @@ def pygame_available(python: str) -> tuple[bool, str]:
         return False, str(err)
 
 
-def find_examples(only: str | None) -> list[Path]:
+def find_examples(only: str | None) -> tuple[list[Path], list[Path]]:
+    """Returns (runnable examples, shared modules)."""
     found: list[Path] = []
+    modules: list[Path] = []
     for path in sorted(ROOT.glob("games_with_py/**/*.py")):
         if any(part in SKIP_DIRS for part in path.parts):
             continue
@@ -92,10 +94,16 @@ def find_examples(only: str | None) -> list[Path]:
         text = path.read_text(encoding="utf-8", errors="replace")
         if "import pygame" not in text:
             continue
+        # A shared content module (see COURSE_SPEC section 9) opens no window, so
+        # running it proves only that it imports. That is still worth doing, and
+        # it is labelled differently so the output does not claim more than it did.
+        if "set_mode" not in text:
+            modules.append(path)
+            continue
         if only and only not in str(path):
             continue
         found.append(path)
-    return found
+    return found, modules
 
 
 def run_one(python: str, path: Path, frames: int, timeout: float) -> str | None:
@@ -151,14 +159,23 @@ def main() -> int:
         print("             tools/.venv/bin/pip install pygame-ce")
         return 0
 
-    examples = find_examples(args.only)
-    if not examples:
+    examples, modules = find_examples(args.only)
+    if not examples and not modules:
         print("  (no pygame examples yet)")
         return 0
 
     print(f"  using {python}  ·  pygame {version}  ·  {args.frames} frames each")
 
     failures = 0
+    for path in modules:
+        rel = path.relative_to(ROOT)
+        problem = run_one(python, path, args.frames, args.timeout)
+        if problem is None:
+            print(f"  ok    {rel}  (shared module: imports cleanly, opens no window)")
+        else:
+            failures += 1
+            print(f"  {RED}FAIL{OFF}  {rel}\n        {problem}")
+
     for path in examples:
         rel = path.relative_to(ROOT)
         problem = run_one(python, path, args.frames, args.timeout)
@@ -170,9 +187,10 @@ def main() -> int:
 
     print()
     if failures:
-        print(f"{RED}{failures} of {len(examples)} pygame example(s) failed{OFF}")
+        print(f"{RED}{failures} of {len(examples) + len(modules)} pygame file(s) failed{OFF}")
         return 1
-    print(f"{GREEN}all {len(examples)} pygame example(s) ran cleanly{OFF}")
+    print(f"{GREEN}all {len(examples)} pygame example(s) ran cleanly"
+          f"{f', plus {len(modules)} shared module(s)' if modules else ''}{OFF}")
     return 0
 
 
