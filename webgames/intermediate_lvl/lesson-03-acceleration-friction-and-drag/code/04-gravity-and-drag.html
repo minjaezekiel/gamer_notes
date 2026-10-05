@@ -1,0 +1,206 @@
+<!doctype html>
+<!-- ===========================================================================
+     04-gravity-and-drag.html — why a falling thing stops speeding up.
+
+     WHAT THIS DEMONSTRATES
+     Four balls fall under the SAME gravity, with four different amounts of drag.
+     The speed graph on the right flattens out at a different height for each one,
+     and every one of those heights is exactly GRAVITY / DRAG.
+
+     That settled speed has a name - terminal velocity - and it is the same
+     arithmetic as THRUST / DRAG for the ship. A skydiver's parachute does not
+     change gravity. It changes drag.
+
+     HOW TO RUN IT
+     Double-click. Press SPACE to drop again, P to open the parachutes mid-fall.
+
+     WHAT TO CHANGE FIRST
+     Set every DRAGS entry to 0 and drop: the graph becomes four straight lines
+     that never flatten, because nothing is pushing back.
+     ======================================================================== -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Gravity and drag</title>
+<style>
+  body { background: #11151c; color: #e7ecf3; font-family: system-ui, sans-serif;
+         display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 16px; }
+  canvas { background: #0a0d12; border: 2px solid #2b3240; border-radius: 6px; }
+  p { max-width: 620px; font-size: 15px; line-height: 1.5; color: #a9b4c4; }
+  b { color: #ffd43b; }
+</style>
+</head>
+<body>
+<h1>Terminal velocity</h1>
+<canvas id="game" width="700" height="430"></canvas>
+<p><b>Space</b> drops them again &middot; <b>P</b> opens parachutes mid-fall.
+   Gravity is the same for all four. Only the drag differs.</p>
+
+<script>
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+
+const GRAVITY = 1400;                   // px/s per second, same for everyone
+const DRAGS = [0, 0.8, 2.0, 5.0];       // per second
+const COLOURS = ["#ff6b6b", "#ffd43b", "#51cf66", "#4dabf7"];
+const LANE_X = [70, 140, 210, 280];
+const TOP_Y = 60;
+const FLOOR_Y = 390;
+const GRAPH_X = 360, GRAPH_Y = 60, GRAPH_W = 320, GRAPH_H = 330;
+const GRAPH_MAX_SPEED = 2000;
+const GRAPH_SECONDS = 3.0;
+
+let balls = [];
+let parachutes = false;
+
+function reset() {
+  parachutes = false;
+  balls = DRAGS.map(function (d, i) {
+    return { y: TOP_Y, vy: 0, drag: d, baseDrag: d, colour: COLOURS[i],
+             x: LANE_X[i], history: [], landed: false, t: 0 };
+  });
+}
+reset();
+
+document.addEventListener("keydown", function (e) {
+  if (e.key === " ") { e.preventDefault(); reset(); }
+  if (e.key === "p" || e.key === "P") {
+    parachutes = true;
+    // A parachute multiplies the DRAG. It does not touch gravity.
+    balls.forEach(function (b) { b.drag = b.baseDrag + 6; });
+  }
+});
+
+function update(dt) {
+  for (let i = 0; i < balls.length; i++) {
+    const b = balls[i];
+    if (b.landed) { continue; }
+    b.t += dt;
+
+    b.vy = b.vy + GRAVITY * dt;              // gravity changes velocity
+    b.vy = b.vy * Math.exp(-b.drag * dt);    // drag takes a share back
+    b.y = b.y + b.vy * dt;                   // velocity changes position
+
+    b.history.push({ t: b.t, v: b.vy });
+    if (b.history.length > 900) { b.history.shift(); }
+
+    if (b.y >= FLOOR_Y - 10) {
+      b.y = FLOOR_Y - 10;
+      b.landed = true;
+    }
+  }
+}
+
+function draw() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  /* ---- the fall ---- */
+  ctx.strokeStyle = "#2b3240";
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(20, FLOOR_Y);
+  ctx.lineTo(330, FLOOR_Y);
+  ctx.stroke();
+
+  ctx.font = "12px ui-monospace, Menlo, monospace";
+  for (let i = 0; i < balls.length; i++) {
+    const b = balls[i];
+    ctx.strokeStyle = "#171d26";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(b.x, TOP_Y - 10);
+    ctx.lineTo(b.x, FLOOR_Y);
+    ctx.stroke();
+
+    ctx.fillStyle = b.colour;
+    ctx.beginPath();
+    ctx.arc(b.x, b.y, 10, 0, Math.PI * 2);
+    ctx.fill();
+
+    if (parachutes && !b.landed) {
+      ctx.strokeStyle = b.colour;
+      ctx.lineWidth = 1.6;
+      ctx.beginPath();
+      ctx.arc(b.x, b.y - 18, 13, Math.PI, 0);
+      ctx.moveTo(b.x - 13, b.y - 18); ctx.lineTo(b.x, b.y - 8);
+      ctx.moveTo(b.x + 13, b.y - 18); ctx.lineTo(b.x, b.y - 8);
+      ctx.stroke();
+    }
+
+    ctx.fillStyle = "#8793a4";
+    ctx.fillText("drag " + b.drag.toFixed(1), b.x - 24, FLOOR_Y + 18);
+    ctx.fillStyle = b.colour;
+    ctx.fillText(Math.round(b.vy) + "", b.x - 12, FLOOR_Y + 34);
+  }
+
+  /* ---- the speed graph: the actual lesson ---- */
+  ctx.fillStyle = "#0e1319";
+  ctx.fillRect(GRAPH_X, GRAPH_Y, GRAPH_W, GRAPH_H);
+  ctx.strokeStyle = "#2b3240";
+  ctx.lineWidth = 1;
+  ctx.strokeRect(GRAPH_X, GRAPH_Y, GRAPH_W, GRAPH_H);
+
+  ctx.font = "12px system-ui, sans-serif";
+  ctx.fillStyle = "#8793a4";
+  ctx.fillText("speed, over 3 seconds", GRAPH_X + 8, GRAPH_Y - 8);
+  ctx.fillText("0", GRAPH_X - 12, GRAPH_Y + GRAPH_H);
+  ctx.fillText(String(GRAPH_MAX_SPEED), GRAPH_X - 34, GRAPH_Y + 10);
+
+  for (let i = 0; i < balls.length; i++) {
+    const b = balls[i];
+
+    /* The predicted terminal velocity, drawn as a dashed line BEFORE the curve,
+       so students can see the curve arrive at a number we worked out on paper. */
+    if (b.drag > 0) {
+      const terminal = GRAVITY / b.drag;
+      if (terminal < GRAPH_MAX_SPEED) {
+        const ty = GRAPH_Y + GRAPH_H - (terminal / GRAPH_MAX_SPEED) * GRAPH_H;
+        ctx.strokeStyle = b.colour;
+        ctx.globalAlpha = 0.45;
+        ctx.setLineDash([4, 5]);
+        ctx.beginPath();
+        ctx.moveTo(GRAPH_X, ty);
+        ctx.lineTo(GRAPH_X + GRAPH_W, ty);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.globalAlpha = 1;
+        ctx.fillStyle = b.colour;
+        ctx.font = "11px ui-monospace, Menlo, monospace";
+        ctx.fillText("g/drag = " + Math.round(terminal), GRAPH_X + GRAPH_W - 96, ty - 4);
+      }
+    }
+
+    ctx.strokeStyle = b.colour;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    let started = false;
+    for (let k = 0; k < b.history.length; k++) {
+      const h = b.history[k];
+      if (h.t > GRAPH_SECONDS) { break; }
+      const px = GRAPH_X + (h.t / GRAPH_SECONDS) * GRAPH_W;
+      const py = GRAPH_Y + GRAPH_H - Math.min(1, h.v / GRAPH_MAX_SPEED) * GRAPH_H;
+      if (!started) { ctx.moveTo(px, py); started = true; } else { ctx.lineTo(px, py); }
+    }
+    ctx.stroke();
+  }
+
+  ctx.font = "13px system-ui, sans-serif";
+  ctx.fillStyle = "#a9b4c4";
+  ctx.fillText("drag 0 never flattens: nothing pushes back.", GRAPH_X + 8, GRAPH_Y + GRAPH_H + 22);
+  ctx.fillText("Each curve meets its own dashed line, which we", GRAPH_X + 8, GRAPH_Y + GRAPH_H + 38);
+  ctx.fillText("worked out before running anything.", GRAPH_X + 8, GRAPH_Y + GRAPH_H + 54);
+}
+
+let lastTime = 0;
+function frame(now) {
+  let dt = (now - lastTime) / 1000;
+  lastTime = now;
+  if (dt > 0.05) { dt = 0.05; }
+  update(dt);
+  draw();
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

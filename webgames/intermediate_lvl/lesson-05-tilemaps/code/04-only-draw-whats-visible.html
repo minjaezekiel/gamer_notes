@@ -1,0 +1,188 @@
+<!doctype html>
+<!-- ===========================================================================
+     04-only-draw-whats-visible.html — the easiest big win in tile games.
+
+     WHAT THIS DEMONSTRATES
+     A 300 x 300 level is 90,000 tiles. About 440 of them are on screen. Drawing
+     all 90,000 every frame is the most common performance mistake in tile games,
+     and the fix is four lines of arithmetic.
+
+     The counter shows tiles drawn per frame and the time one draw takes, both
+     ways, measured rather than claimed.
+
+     HOW TO RUN IT
+     Double-click. Arrow keys scroll. Press C to switch culling on and off.
+
+     WHAT TO CHANGE FIRST
+     Switch culling off and watch the millisecond figure. A frame has about 16 ms
+     to do everything in; compare that against what you see. Then set MAP_SIZE to
+     1000 and try again - but save your work first.
+     ======================================================================== -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Only draw what is visible</title>
+<style>
+  body { background: #11151c; color: #e7ecf3; font-family: system-ui, sans-serif;
+         display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 16px; }
+  canvas { background: #0a0d12; border: 2px solid #2b3240; border-radius: 6px; }
+  p { max-width: 640px; font-size: 15px; line-height: 1.5; color: #a9b4c4; }
+  b { color: #ffd43b; }
+</style>
+</head>
+<body>
+<h1>90,000 tiles, 440 of them visible</h1>
+<canvas id="game" width="700" height="420"></canvas>
+<p>Arrow keys scroll &middot; <b>C</b> switches culling on and off.
+   The &ldquo;ms per draw&rdquo; figure is measured with <code>performance.now()</code>,
+   not estimated.</p>
+
+<script>
+const TILE = 28;
+const MAP_SIZE = 300;                 // 300 x 300 = 90,000 tiles
+
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+
+/* ---------------------------------------------------------------------------
+   A generated map. One flat Uint8Array rather than an array of strings: at this
+   size it is the right shape, and the index arithmetic is the row*WIDTH+col
+   formula from the beginner C++ track.
+   ------------------------------------------------------------------------ */
+const map = new Uint8Array(MAP_SIZE * MAP_SIZE);
+function mapIndex(col, row) { return row * MAP_SIZE + col; }
+
+(function generate() {
+  for (let row = 0; row < MAP_SIZE; row++) {
+    for (let col = 0; col < MAP_SIZE; col++) {
+      let v = 0;
+      // a simple repeating pattern, so scrolling is obviously happening
+      if (col % 37 === 0 || row % 29 === 0) { v = 1; }
+      if ((col * 7 + row * 3) % 91 === 0) { v = 2; }
+      if (row > MAP_SIZE - 3 || col > MAP_SIZE - 3 || row < 2 || col < 2) { v = 1; }
+      map[mapIndex(col, row)] = v;
+    }
+  }
+}());
+
+const COLOURS = ["#121820", "#3c4756", "#1c4f7c"];
+
+const camera = { x: TILE * 10, y: TILE * 10 };
+let culling = true;
+let tilesDrawn = 0;
+let msPerDraw = 0;
+const msSamples = [];
+
+const keys = {};
+document.addEventListener("keydown", function (e) {
+  keys[e.key] = true;
+  if (e.key.startsWith("Arrow")) { e.preventDefault(); }
+  if (e.key === "c" || e.key === "C") { culling = !culling; msSamples.length = 0; }
+});
+document.addEventListener("keyup", function (e) { keys[e.key] = false; });
+
+function update(dt) {
+  const SPEED = 420;
+  if (keys["ArrowRight"]) { camera.x += SPEED * dt; }
+  if (keys["ArrowLeft"])  { camera.x -= SPEED * dt; }
+  if (keys["ArrowDown"])  { camera.y += SPEED * dt; }
+  if (keys["ArrowUp"])    { camera.y -= SPEED * dt; }
+  camera.x = Math.max(0, Math.min(MAP_SIZE * TILE - canvas.width, camera.x));
+  camera.y = Math.max(0, Math.min(MAP_SIZE * TILE - canvas.height, camera.y));
+}
+
+function drawWorld() {
+  tilesDrawn = 0;
+
+  let firstCol = 0, lastCol = MAP_SIZE - 1, firstRow = 0, lastRow = MAP_SIZE - 1;
+
+  if (culling) {
+    /* ---- THE FOUR LINES ----
+       The +1 matters: the tile that is only half on screen still has to be drawn,
+       or there is a flickering empty strip along the right and bottom edges. */
+    firstCol = Math.floor(camera.x / TILE);
+    lastCol  = Math.floor((camera.x + canvas.width) / TILE) + 1;
+    firstRow = Math.floor(camera.y / TILE);
+    lastRow  = Math.floor((camera.y + canvas.height) / TILE) + 1;
+
+    // never ask for a tile that does not exist
+    firstCol = Math.max(0, firstCol);
+    firstRow = Math.max(0, firstRow);
+    lastCol = Math.min(MAP_SIZE - 1, lastCol);
+    lastRow = Math.min(MAP_SIZE - 1, lastRow);
+  }
+
+  for (let row = firstRow; row <= lastRow; row++) {
+    for (let col = firstCol; col <= lastCol; col++) {
+      const v = map[mapIndex(col, row)];
+      if (v === 0) { continue; }                 // skip empty floor entirely
+      /* world position -> screen position: the one subtraction from lesson 6 */
+      const sx = col * TILE - camera.x;
+      const sy = row * TILE - camera.y;
+      if (!culling && (sx < -TILE || sy < -TILE || sx > canvas.width || sy > canvas.height)) {
+        // Without culling we still have to VISIT every tile, which is the cost.
+        tilesDrawn += 1;
+        continue;
+      }
+      ctx.fillStyle = COLOURS[v];
+      ctx.fillRect(Math.round(sx), Math.round(sy), TILE, TILE);
+      tilesDrawn += 1;
+    }
+  }
+}
+
+function draw() {
+  ctx.fillStyle = "#121820";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  const t0 = performance.now();
+  drawWorld();
+  const t1 = performance.now();
+
+  msSamples.push(t1 - t0);
+  if (msSamples.length > 30) { msSamples.shift(); }
+  let total = 0;
+  for (let i = 0; i < msSamples.length; i++) { total += msSamples[i]; }
+  msPerDraw = total / msSamples.length;
+
+  /* ---- the readout ---- */
+  ctx.fillStyle = "rgba(10,13,18,0.85)";
+  ctx.fillRect(10, 10, 330, 118);
+  ctx.strokeStyle = "#2b3240";
+  ctx.strokeRect(10, 10, 330, 118);
+
+  ctx.font = "bold 14px system-ui, sans-serif";
+  ctx.fillStyle = culling ? "#51cf66" : "#ff6b6b";
+  ctx.fillText(culling ? "CULLING ON  (press C)" : "CULLING OFF  (press C)", 22, 32);
+
+  ctx.font = "12.5px ui-monospace, Menlo, monospace";
+  ctx.fillStyle = "#8793a4";
+  ctx.fillText("map        " + MAP_SIZE + " x " + MAP_SIZE + " = " +
+               (MAP_SIZE * MAP_SIZE).toLocaleString() + " tiles", 22, 54);
+  ctx.fillText("visited    " + tilesDrawn.toLocaleString() + " this frame", 22, 72);
+  ctx.fillStyle = msPerDraw > 8 ? "#ff6b6b" : "#51cf66";
+  ctx.fillText("ms / draw  " + msPerDraw.toFixed(2) +
+               "   (a frame has ~16)", 22, 90);
+  ctx.fillStyle = "#6b7480";
+  ctx.fillText("camera     " + Math.round(camera.x) + ", " + Math.round(camera.y), 22, 112);
+
+  ctx.font = "12px system-ui, sans-serif";
+  ctx.fillStyle = "#6b7480";
+  ctx.fillText("firstCol = floor(camera.x / TILE)", 360, 26);
+  ctx.fillText("lastCol  = floor((camera.x + width) / TILE) + 1", 360, 44);
+  ctx.fillText("the +1 draws the half-visible tile at the edge", 360, 62);
+}
+
+let lastTime = 0;
+function frame(now) {
+  let dt = (now - lastTime) / 1000;
+  lastTime = now;
+  if (dt > 0.05) { dt = 0.05; }
+  update(dt);
+  draw();
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

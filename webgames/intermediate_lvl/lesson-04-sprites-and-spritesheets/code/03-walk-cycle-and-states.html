@@ -1,0 +1,285 @@
+<!doctype html>
+<!-- ===========================================================================
+     03-walk-cycle-and-states.html — the lesson, in one file.
+
+     WHAT THIS DEMONSTRATES
+       * the frame timer: the animation's clock, separate from the game's
+       * the character's STATE choosing which animation plays
+       * resetting the frame when the state CHANGES (not while it is a state)
+       * a switch to run the broken "one pose per game frame" version, so you can
+         show somebody the difference
+
+     HOW TO RUN IT
+     Double-click. Arrow keys walk, Space jumps.
+       B  toggle the broken one-pose-per-frame version
+       Z  toggle "timer = 0" instead of "timer -= FRAME_TIME" (watch the drift)
+       [  ]  slower / faster animation
+
+     WHAT TO CHANGE FIRST
+     Press B. The character vibrates instead of walking. Then press B again and
+     look at the game-frame counter versus the pose counter: several game frames
+     pass per pose, and that is correct.
+     ======================================================================== -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Walk cycle and states</title>
+<style>
+  body { background: #11151c; color: #e7ecf3; font-family: system-ui, sans-serif;
+         display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 16px; }
+  canvas { background: #0a0d12; border: 2px solid #2b3240; border-radius: 6px; }
+  p { max-width: 640px; font-size: 15px; line-height: 1.5; color: #a9b4c4; }
+  b { color: #ffd43b; }
+</style>
+</head>
+<body>
+<h1>Two clocks</h1>
+<canvas id="game" width="720" height="420"></canvas>
+<p>Arrow keys walk &middot; <b>Space</b> jumps &middot; <b>B</b> the one-pose-per-frame bug &middot;
+   <b>Z</b> the <code>timer = 0</code> drift &middot; <b>[</b> <b>]</b> animation speed.</p>
+
+<script>
+const FRAME_W = 24, FRAME_H = 32, COLS = 6, ROWS = 3;
+const SCALE = 4;
+const GROUND_Y = 330;
+
+/* ---------------------------------------------------------------------------
+   THE ANIMATION TABLE. This is the only place in the program that knows
+   anything about the picture. A new animation is one line here.
+   ------------------------------------------------------------------------ */
+const ANIMATIONS = {
+  idle: { row: 0, frames: 2, fps: 2 },
+  walk: { row: 1, frames: 6, fps: 8 },
+  jump: { row: 2, frames: 1, fps: 1 }
+};
+
+function drawPose(c, ox, oy, phase, mode) {
+  const midX = ox + FRAME_W / 2;
+  const swing = Math.sin(phase * Math.PI * 2);
+  const bob = mode === "walk" ? Math.abs(Math.cos(phase * Math.PI * 2)) * 1.5 : 0;
+  const breathe = mode === "idle" ? Math.sin(phase * Math.PI * 2) * 0.8 : 0;
+  const headY = oy + 8 + bob + breathe;
+  c.fillStyle = "#ffd9a0"; c.fillRect(midX - 4, headY - 6, 8, 7);
+  c.fillStyle = "#4dabf7"; c.fillRect(midX - 4, headY + 1, 8, 10);
+  c.fillStyle = "#ffd9a0";
+  if (mode === "jump") {
+    c.fillRect(midX - 7, headY + 1, 3, 7);
+    c.fillRect(midX + 4, headY + 1, 3, 7);
+  } else {
+    c.fillRect(midX - 6 - swing * 2, headY + 2, 3, 7);
+    c.fillRect(midX + 3 + swing * 2, headY + 2, 3, 7);
+  }
+  c.fillStyle = "#2b3240";
+  if (mode === "jump") {
+    c.fillRect(midX - 4, headY + 11, 3, 8);
+    c.fillRect(midX + 1, headY + 11, 3, 6);
+  } else if (mode === "idle") {
+    c.fillRect(midX - 4, headY + 11, 3, 10);
+    c.fillRect(midX + 1, headY + 11, 3, 10);
+  } else {
+    const lead = Math.round(swing * 3);
+    c.fillRect(midX - 4 + lead, headY + 11, 3, 10);
+    c.fillRect(midX + 1 - lead, headY + 11, 3, 10);
+  }
+}
+
+function buildSheet() {
+  const sheet = document.createElement("canvas");
+  sheet.width = FRAME_W * COLS;
+  sheet.height = FRAME_H * ROWS;
+  const c = sheet.getContext("2d");
+  for (let i = 0; i < COLS; i++) { drawPose(c, i * FRAME_W, 0, (i % 2) / 2, "idle"); }
+  for (let i = 0; i < COLS; i++) { drawPose(c, i * FRAME_W, FRAME_H, i / COLS, "walk"); }
+  for (let i = 0; i < COLS; i++) { drawPose(c, i * FRAME_W, FRAME_H * 2, 0, "jump"); }
+  return sheet;
+}
+const sheet = buildSheet();
+
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+
+const player = {
+  x: 120, y: GROUND_Y, vx: 0, vy: 0,
+  onGround: true,
+  facing: 1,
+  state: "idle",
+  lastState: "idle",
+  frame: 0,
+  timer: 0
+};
+
+let brokenPerFrame = false;
+let zeroTheTimer = false;
+let fpsScale = 1;
+let gameFrames = 0;
+let poseChanges = 0;
+
+const keys = {};
+document.addEventListener("keydown", function (e) {
+  keys[e.key] = true;
+  if (e.key.startsWith("Arrow") || e.key === " ") { e.preventDefault(); }
+  if (e.key === "b" || e.key === "B") { brokenPerFrame = !brokenPerFrame; }
+  if (e.key === "z" || e.key === "Z") { zeroTheTimer = !zeroTheTimer; }
+  if (e.key === "]") { fpsScale = Math.min(8, fpsScale * 1.5); }
+  if (e.key === "[") { fpsScale = Math.max(0.2, fpsScale / 1.5); }
+});
+document.addEventListener("keyup", function (e) { keys[e.key] = false; });
+
+function update(dt) {
+  gameFrames += 1;
+
+  /* ---- movement (lesson 3, simplified) ---- */
+  const SPEED = 190;
+  player.vx = 0;
+  if (keys["ArrowRight"]) { player.vx = SPEED;  player.facing = 1; }
+  if (keys["ArrowLeft"])  { player.vx = -SPEED; player.facing = -1; }
+  if (keys[" "] && player.onGround) { player.vy = -480; player.onGround = false; }
+
+  player.vy = player.vy + 1400 * dt;
+  player.x = player.x + player.vx * dt;
+  player.y = player.y + player.vy * dt;
+  if (player.y >= GROUND_Y) { player.y = GROUND_Y; player.vy = 0; player.onGround = true; }
+  player.x = Math.max(30, Math.min(canvas.width - 30, player.x));
+
+  /* ---- 1. the game decides what the character is DOING.
+           Nothing here mentions a picture. ---- */
+  if (!player.onGround)             { player.state = "jump"; }
+  else if (Math.abs(player.vx) > 5) { player.state = "walk"; }
+  else                              { player.state = "idle"; }
+
+  /* ---- 2. a CHANGE of state restarts the animation.
+           Note: !== lastState, not === "walk". ---- */
+  if (player.state !== player.lastState) {
+    player.frame = 0;
+    player.timer = 0;
+    player.lastState = player.state;
+  }
+
+  /* ---- 3. the frame timer ---- */
+  const anim = ANIMATIONS[player.state];
+
+  if (brokenPerFrame) {
+    /* THE BUG: one pose per game frame. The animation now runs at whatever the
+       frame rate happens to be - 60 poses a second, and faster still on a
+       144 Hz monitor. Nobody chose that number. */
+    player.frame = (player.frame + 1) % anim.frames;
+    poseChanges += 1;
+  } else {
+    const FRAME_TIME = 1 / (anim.fps * fpsScale);
+    player.timer = player.timer + dt;
+    /* while, not if: a slow frame may owe us two poses. */
+    while (player.timer >= FRAME_TIME) {
+      if (zeroTheTimer) {
+        player.timer = 0;             /* loses the leftover -> drifts slow */
+      } else {
+        player.timer = player.timer - FRAME_TIME;   /* keeps it -> stays in time */
+      }
+      player.frame = (player.frame + 1) % anim.frames;
+      poseChanges += 1;
+    }
+  }
+}
+
+function draw() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.imageSmoothingEnabled = false;
+
+  // ground
+  ctx.fillStyle = "#161c25";
+  ctx.fillRect(0, GROUND_Y, canvas.width, canvas.height - GROUND_Y);
+
+  const anim = ANIMATIONS[player.state];
+  const sx = player.frame * FRAME_W;
+  const sy = anim.row * FRAME_H;
+  const dw = FRAME_W * SCALE;
+  const dh = FRAME_H * SCALE;
+  /* Anchor: the middle of the feet. x is the centre, y is the floor. */
+  const dx = Math.round(player.x - dw / 2);
+  const dy = Math.round(player.y - dh);
+
+  ctx.save();
+  if (player.facing === -1) {
+    // Mirror about the SPRITE, not about x = 0.
+    ctx.translate(player.x, 0);
+    ctx.scale(-1, 1);
+    ctx.translate(-player.x, 0);
+  }
+  ctx.drawImage(sheet, sx, sy, FRAME_W, FRAME_H, dx, dy, dw, dh);
+  ctx.restore();
+
+  /* ---- the sheet, with the current cell highlighted ---- */
+  const SZ = 3, SX = 24, SY = 40;
+  ctx.drawImage(sheet, 0, 0, sheet.width, sheet.height,
+                SX, SY, sheet.width * SZ, sheet.height * SZ);
+  ctx.strokeStyle = "#f08c00";
+  ctx.lineWidth = 2;
+  ctx.strokeRect(SX + sx * SZ, SY + sy * SZ, FRAME_W * SZ, FRAME_H * SZ);
+
+  /* ---- the two clocks ---- */
+  const px = 480;
+  ctx.font = "bold 13px system-ui, sans-serif";
+  ctx.fillStyle = "#e7ecf3";
+  ctx.fillText("GAME CLOCK", px, 54);
+  ctx.font = "12.5px ui-monospace, Menlo, monospace";
+  ctx.fillStyle = "#4dabf7";
+  ctx.fillText("frames  " + gameFrames, px, 74);
+
+  ctx.font = "bold 13px system-ui, sans-serif";
+  ctx.fillStyle = "#e7ecf3";
+  ctx.fillText("SPRITE CLOCK", px, 104);
+  ctx.font = "12.5px ui-monospace, Menlo, monospace";
+  ctx.fillStyle = "#ff9f43";
+  ctx.fillText("poses   " + poseChanges, px, 124);
+  ctx.fillText("ratio   " + (poseChanges > 0
+      ? (gameFrames / poseChanges).toFixed(1) + " game frames per pose"
+      : "-"), px, 144);
+
+  ctx.fillStyle = "#8793a4";
+  ctx.fillText("state   " + player.state, px, 176);
+  ctx.fillText("row     " + anim.row + "   frame " + player.frame, px, 196);
+  ctx.fillText("sx      " + sx + "    sy " + sy, px, 216);
+  ctx.fillText("facing  " + (player.facing === 1 ? "right" : "left"), px, 236);
+  ctx.fillText("anim    " + (anim.fps * fpsScale).toFixed(1) + " poses/s", px, 256);
+
+  // the timer bar
+  const FRAME_TIME = 1 / (ANIMATIONS[player.state].fps * fpsScale);
+  ctx.fillStyle = "#1b2130";
+  ctx.fillRect(px, 272, 200, 14);
+  ctx.fillStyle = "#ff9f43";
+  ctx.fillRect(px, 272, 200 * Math.min(1, player.timer / FRAME_TIME), 14);
+  ctx.strokeStyle = "#2b3240";
+  ctx.strokeRect(px, 272, 200, 14);
+  ctx.fillStyle = "#6b7480";
+  ctx.font = "11px system-ui, sans-serif";
+  ctx.fillText("timer " + player.timer.toFixed(3) + " / " + FRAME_TIME.toFixed(3) + " s",
+               px, 300);
+
+  if (brokenPerFrame) {
+    ctx.font = "bold 15px system-ui, sans-serif";
+    ctx.fillStyle = "#ff6b6b";
+    ctx.fillText("BROKEN: one pose per game frame (press B)", px - 240, 392);
+  } else if (zeroTheTimer) {
+    ctx.font = "bold 14px system-ui, sans-serif";
+    ctx.fillStyle = "#f08c00";
+    ctx.fillText("timer = 0 instead of timer -= FRAME_TIME: watch it drift slow (press Z)",
+                 24, 392);
+  } else {
+    ctx.font = "13px system-ui, sans-serif";
+    ctx.fillStyle = "#51cf66";
+    ctx.fillText("correct: the animation has its own clock", 24, 392);
+  }
+}
+
+let lastTime = 0;
+function frame(now) {
+  let dt = (now - lastTime) / 1000;
+  lastTime = now;
+  if (dt > 0.05) { dt = 0.05; }
+  update(dt);
+  draw();
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

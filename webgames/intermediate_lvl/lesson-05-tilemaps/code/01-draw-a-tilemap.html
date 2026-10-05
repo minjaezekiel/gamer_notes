@@ -1,0 +1,199 @@
+<!doctype html>
+<!-- ===========================================================================
+     01-draw-a-tilemap.html — a level as text, drawn.
+
+     WHAT THIS DEMONSTRATES
+     That the two conversions are the whole foundation:
+         col = Math.floor(x / TILE)      position -> square
+         x   = col * TILE                square -> position
+     Move the mouse and watch both directions happen at once.
+
+     HOW TO RUN IT
+     Double-click. Move the mouse over the level. G toggles the grid.
+
+     WHAT TO CHANGE FIRST
+     Edit LEVEL below: change a '.' to a '#' and reload. Then delete one
+     character from one row and look at the right-hand edge of the world - that is
+     the bug the startup check exists to catch.
+     ======================================================================== -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Draw a tilemap</title>
+<style>
+  body { background: #11151c; color: #e7ecf3; font-family: system-ui, sans-serif;
+         display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 16px; }
+  canvas { background: #0a0d12; border: 2px solid #2b3240; border-radius: 6px; cursor: crosshair; }
+  p { max-width: 640px; font-size: 15px; line-height: 1.5; color: #a9b4c4; }
+  b { color: #ffd43b; }
+</style>
+</head>
+<body>
+<h1>A level is text</h1>
+<canvas id="game" width="700" height="440"></canvas>
+<p>Move the mouse over the world. <b>G</b> toggles the grid. The numbers show both
+   conversions happening at the same time.</p>
+
+<script>
+const TILE = 32;
+
+/* THE WHOLE LEVEL. 20 x 10 characters. */
+const LEVEL = [
+  "####################",
+  "#..................#",
+  "#..###....####.....#",
+  "#....#.......#.....#",
+  "#....#..##...#.....#",
+  "#.......##.........#",
+  "#..####.......###..#",
+  "#.....#..####......#",
+  "#.....#............#",
+  "####################"
+];
+
+/* The tile table. Adding a type is one line here and nothing anywhere else. */
+const TILES = {
+  ".": { solid: false, colour: "#121820", name: "floor" },
+  "#": { solid: true,  colour: "#3c4756", name: "wall" }
+};
+
+/* ---------------------------------------------------------------------------
+   A startup check. Four lines, and it prevents a bug that otherwise looks like
+   "the right-hand side of my level has a hole in it": a short row returns an
+   EMPTY STRING for the missing columns, which is not "#", so it is not solid -
+   and nothing throws.
+   ------------------------------------------------------------------------ */
+function checkLevel() {
+  const width = LEVEL[0].length;
+  for (let row = 0; row < LEVEL.length; row++) {
+    if (LEVEL[row].length !== width) {
+      return "row " + row + " is " + LEVEL[row].length +
+             " characters long, but row 0 is " + width;
+    }
+  }
+  return null;
+}
+const levelProblem = checkLevel();
+
+const COLS = LEVEL[0].length;
+const ROWS = LEVEL.length;
+
+function tileAt(col, row) {
+  /* OUT OF BOUNDS COUNTS AS SOLID. One decision, several bugs gone: no
+     undefined, no escaping the world, and the border of '#' becomes optional. */
+  if (col < 0 || row < 0 || row >= ROWS || col >= COLS) { return "#"; }
+  return LEVEL[row].charAt(col);
+}
+function isSolid(col, row) {
+  return TILES[tileAt(col, row)].solid;
+}
+
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+const MAP_X = 24, MAP_Y = 64;
+
+let mouse = { x: -1, y: -1 };
+let showGrid = true;
+
+canvas.addEventListener("mousemove", function (e) {
+  const b = canvas.getBoundingClientRect();
+  mouse.x = e.clientX - b.left;
+  mouse.y = e.clientY - b.top;
+  draw();
+});
+document.addEventListener("keydown", function (e) {
+  if (e.key === "g" || e.key === "G") { showGrid = !showGrid; draw(); }
+});
+
+function draw() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  /* ---- draw the world: one rectangle per tile ---- */
+  for (let row = 0; row < ROWS; row++) {
+    for (let col = 0; col < COLS; col++) {
+      const t = TILES[tileAt(col, row)];
+      // square -> position. The other direction of the same conversion.
+      ctx.fillStyle = t.colour;
+      ctx.fillRect(MAP_X + col * TILE, MAP_Y + row * TILE, TILE, TILE);
+    }
+  }
+
+  if (showGrid) {
+    ctx.strokeStyle = "#1d242e";
+    ctx.lineWidth = 1;
+    for (let col = 0; col <= COLS; col++) {
+      ctx.beginPath();
+      ctx.moveTo(MAP_X + col * TILE, MAP_Y);
+      ctx.lineTo(MAP_X + col * TILE, MAP_Y + ROWS * TILE);
+      ctx.stroke();
+    }
+    for (let row = 0; row <= ROWS; row++) {
+      ctx.beginPath();
+      ctx.moveTo(MAP_X, MAP_Y + row * TILE);
+      ctx.lineTo(MAP_X + COLS * TILE, MAP_Y + row * TILE);
+      ctx.stroke();
+    }
+  }
+
+  /* ---- position -> square, for whatever the mouse is over ---- */
+  const wx = mouse.x - MAP_X;
+  const wy = mouse.y - MAP_Y;
+  const col = Math.floor(wx / TILE);
+  const row = Math.floor(wy / TILE);
+  const inside = wx >= 0 && wy >= 0 && col < COLS && row < ROWS;
+
+  if (inside) {
+    ctx.strokeStyle = "#f08c00";
+    ctx.lineWidth = 2.5;
+    ctx.strokeRect(MAP_X + col * TILE, MAP_Y + row * TILE, TILE, TILE);
+  }
+
+  ctx.font = "bold 15px system-ui, sans-serif";
+  ctx.fillStyle = "#e7ecf3";
+  ctx.fillText("the level is " + COLS + " x " + ROWS + " tiles of " + TILE + " px", MAP_X, 34);
+
+  const px = MAP_X + COLS * TILE + 26;
+  ctx.font = "bold 13px system-ui, sans-serif";
+  ctx.fillStyle = "#e7ecf3";
+  ctx.fillText("UNDER THE POINTER", px, MAP_Y + 4);
+
+  ctx.font = "12.5px ui-monospace, Menlo, monospace";
+  if (inside) {
+    ctx.fillStyle = "#8793a4";
+    ctx.fillText("x, y    " + Math.round(wx) + ", " + Math.round(wy), px, MAP_Y + 28);
+    ctx.fillStyle = "#f08c00";
+    ctx.fillText("col     floor(" + Math.round(wx) + "/" + TILE + ") = " + col, px, MAP_Y + 50);
+    ctx.fillText("row     floor(" + Math.round(wy) + "/" + TILE + ") = " + row, px, MAP_Y + 68);
+    ctx.fillStyle = "#8793a4";
+    ctx.fillText("corner  " + (col * TILE) + ", " + (row * TILE), px, MAP_Y + 92);
+    ctx.fillText("into it " + (Math.round(wx) % TILE) + ", " + (Math.round(wy) % TILE),
+                 px, MAP_Y + 110);
+    const ch = tileAt(col, row);
+    ctx.fillStyle = TILES[ch].solid ? "#ff6b6b" : "#51cf66";
+    ctx.fillText("tile    '" + ch + "'  " + TILES[ch].name, px, MAP_Y + 136);
+    ctx.fillText("solid   " + TILES[ch].solid, px, MAP_Y + 154);
+  } else {
+    ctx.fillStyle = "#6b7480";
+    ctx.fillText("(move the mouse over the level)", px, MAP_Y + 28);
+  }
+
+  ctx.font = "12px system-ui, sans-serif";
+  ctx.fillStyle = "#6b7480";
+  ctx.fillText("x % TILE is how far INTO the tile", px, MAP_Y + 190);
+  ctx.fillText("you are. Useful for edges and for", px, MAP_Y + 206);
+  ctx.fillText("snapping things to the grid.", px, MAP_Y + 222);
+
+  if (levelProblem) {
+    ctx.font = "bold 14px system-ui, sans-serif";
+    ctx.fillStyle = "#ff6b6b";
+    ctx.fillText("LEVEL PROBLEM: " + levelProblem, MAP_X, canvas.height - 16);
+  } else {
+    ctx.font = "12.5px system-ui, sans-serif";
+    ctx.fillStyle = "#51cf66";
+    ctx.fillText("every row is the same length — checked at startup", MAP_X, canvas.height - 16);
+  }
+}
+draw();
+</script>
+</body>
+</html>

@@ -1,0 +1,205 @@
+<!doctype html>
+<!-- ===========================================================================
+     04-crisp-pixels-and-flipping.html — why pixel art goes blurry, and how
+     mirroring works.
+
+     WHAT THIS DEMONSTRATES
+       * imageSmoothingEnabled, on and off, on the same sprite
+       * drawing at x = 40.3 versus Math.round(x), while moving slowly
+         (press R to make the lower sprite stop rounding, and watch the two
+          rows become identically soft - which proves the rounding is the only
+          thing making the difference)
+       * scale(-1, 1) with and without the two translate calls, so you can see
+         exactly where the mirrored sprite goes
+
+     HOW TO RUN IT
+     Double-click. S toggles smoothing, R toggles rounding, T toggles the
+     translate pair. Arrow keys change the zoom.
+
+     WHAT TO CHANGE FIRST
+     Turn rounding off and watch the bottom row. The sprite is moving at a third
+     of a pixel per frame, so it spends most of its life between pixels - and it
+     shimmers. Then turn rounding on and watch it step cleanly.
+     ======================================================================== -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Crisp pixels and flipping</title>
+<style>
+  body { background: #11151c; color: #e7ecf3; font-family: system-ui, sans-serif;
+         display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 16px; }
+  canvas { background: #0a0d12; border: 2px solid #2b3240; border-radius: 6px; }
+  p { max-width: 640px; font-size: 15px; line-height: 1.5; color: #a9b4c4; }
+  b { color: #ffd43b; }
+</style>
+</head>
+<body>
+<h1>Sharp, and the right way round</h1>
+<canvas id="game" width="720" height="460"></canvas>
+<p><b>S</b> smoothing &middot; <b>R</b> rounding &middot; <b>T</b> the translate pair &middot;
+   <b>&larr; &rarr;</b> zoom. Each row shows the same sprite under different rules.</p>
+
+<script>
+const FRAME_W = 24, FRAME_H = 32;
+
+function buildSprite() {
+  const s = document.createElement("canvas");
+  s.width = FRAME_W; s.height = FRAME_H;
+  const c = s.getContext("2d");
+  // Deliberately blocky art, with a clear left and right, so a mirror is obvious.
+  c.fillStyle = "#ffd9a0"; c.fillRect(8, 2, 8, 7);
+  c.fillStyle = "#1b2130"; c.fillRect(13, 4, 2, 2);        // one eye, facing right
+  c.fillStyle = "#4dabf7"; c.fillRect(8, 9, 8, 10);
+  c.fillStyle = "#ff6b6b"; c.fillRect(16, 10, 5, 3);       // an arm, pointing right
+  c.fillStyle = "#ffd9a0"; c.fillRect(6, 10, 2, 7);
+  c.fillStyle = "#2b3240"; c.fillRect(8, 19, 3, 11);
+  c.fillStyle = "#2b3240"; c.fillRect(13, 19, 3, 11);
+  // a chequer stripe, which makes any blurring immediately visible
+  c.fillStyle = "#51cf66";
+  for (let i = 0; i < 8; i++) { c.fillRect(8 + i, 19, 1, 1 + (i % 2)); }
+  return s;
+}
+const sprite = buildSprite();
+
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+
+let smoothing = false;
+let rounding = true;
+let useTranslatePair = true;
+let zoom = 5;
+let slowX = 80;
+
+document.addEventListener("keydown", function (e) {
+  if (e.key === "s" || e.key === "S") { smoothing = !smoothing; }
+  if (e.key === "r" || e.key === "R") { rounding = !rounding; }
+  if (e.key === "t" || e.key === "T") { useTranslatePair = !useTranslatePair; }
+  if (e.key === "ArrowRight") { zoom = Math.min(10, zoom + 1); e.preventDefault(); }
+  if (e.key === "ArrowLeft")  { zoom = Math.max(2, zoom - 1); e.preventDefault(); }
+});
+
+function label(text, x, y, colour) {
+  ctx.font = "bold 13px system-ui, sans-serif";
+  ctx.fillStyle = colour || "#e7ecf3";
+  ctx.fillText(text, x, y);
+}
+function note(text, x, y) {
+  ctx.font = "12px system-ui, sans-serif";
+  ctx.fillStyle = "#8793a4";
+  ctx.fillText(text, x, y);
+}
+
+function update(dt) {
+  slowX += 11 * dt;                   // about a third of a pixel per frame
+  if (slowX > 300) { slowX = 80; }
+}
+
+function draw() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  const w = FRAME_W * zoom, h = FRAME_H * zoom;
+
+  /* ---- ROW 1: smoothing ---- */
+  label("1. SMOOTHING", 24, 32);
+  note("the chequered stripe on the legs is the giveaway", 160, 32);
+
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(sprite, 0, 0, FRAME_W, FRAME_H, 24, 44, w, h);
+  label("off — correct for pixel art", 24, 44 + h + 16, "#51cf66");
+
+  ctx.imageSmoothingEnabled = true;
+  ctx.drawImage(sprite, 0, 0, FRAME_W, FRAME_H, 24 + w + 40, 44, w, h);
+  label("on — the browser assumes a photo", 24 + w + 40, 44 + h + 16, "#ff6b6b");
+
+  /* ---- ROW 2: flipping ---- */
+  const flipY = 44 + h + 42;
+  label("2. FLIPPING", 24, flipY + 14);
+  note(useTranslatePair ? "translate / scale(-1,1) / translate — correct"
+                        : "scale(-1,1) ALONE — press T", 160, flipY + 14);
+
+  ctx.imageSmoothingEnabled = !smoothing ? false : true;
+
+  const flipX = 150;
+  ctx.save();
+  if (useTranslatePair) {
+    ctx.translate(flipX, 0);
+    ctx.scale(-1, 1);
+    ctx.translate(-flipX, 0);
+  } else {
+    ctx.scale(-1, 1);          // mirrors about x = 0: the sprite leaves the screen
+  }
+  ctx.drawImage(sprite, 0, 0, FRAME_W, FRAME_H,
+                flipX - w / 2, flipY + 26, w, h);
+  ctx.restore();
+
+  // the mirror line, so the geometry is visible rather than mysterious
+  ctx.strokeStyle = "#f08c00";
+  ctx.setLineDash([4, 4]);
+  ctx.beginPath();
+  ctx.moveTo(useTranslatePair ? flipX : 0, flipY + 20);
+  ctx.lineTo(useTranslatePair ? flipX : 0, flipY + 30 + h);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = "#f08c00";
+  ctx.font = "11px ui-monospace, Menlo, monospace";
+  ctx.fillText(useTranslatePair ? "mirror about x = " + flipX : "mirror about x = 0",
+               useTranslatePair ? flipX + 6 : 6, flipY + 18);
+
+  // the unmirrored one for comparison
+  ctx.drawImage(sprite, 0, 0, FRAME_W, FRAME_H, 300, flipY + 26, w, h);
+  note("unmirrored, for comparison", 300, flipY + 30 + h + 14);
+
+  if (!useTranslatePair) {
+    ctx.fillStyle = "#ff6b6b";
+    ctx.font = "bold 13px system-ui, sans-serif";
+    ctx.fillText("the mirrored sprite is off the left edge — press T", 300, flipY + 60);
+  }
+
+  /* ---- ROW 3: rounding, while moving slowly ---- */
+  const rowY = canvas.height - 86;
+  label("3. WHOLE-NUMBER POSITIONS", 24, rowY - 10);
+  note("moving at about a third of a pixel per frame", 260, rowY - 10);
+
+  ctx.imageSmoothingEnabled = false;
+  const smallW = FRAME_W * 3, smallH = FRAME_H * 2;
+  const rawX = slowX;
+  /* R turns the rounding off, so both rows go soft and you can see that the
+     rounding is the only difference between them. */
+  const roundedX = rounding ? Math.round(slowX) : slowX;
+
+  ctx.drawImage(sprite, 0, 0, FRAME_W, FRAME_H, rawX, rowY, smallW, smallH);
+  ctx.drawImage(sprite, 0, 0, FRAME_W, FRAME_H, roundedX, rowY + 36, smallW, smallH);
+
+  ctx.font = "11.5px ui-monospace, Menlo, monospace";
+  ctx.fillStyle = "#ff6b6b";
+  ctx.fillText("x = " + rawX.toFixed(2) + "   (soft)", 420, rowY + 14);
+  ctx.fillStyle = rounding ? "#51cf66" : "#ff6b6b";
+  ctx.fillText("x = " + (rounding ? roundedX + "          (sharp)"
+                                  : roundedX.toFixed(2) + "   (R is off: soft too)"),
+               420, rowY + 50);
+  ctx.fillStyle = "#6b7480";
+  ctx.font = "11.5px system-ui, sans-serif";
+  ctx.fillText("Round when you DRAW. Never round the stored", 420, rowY + 72);
+  ctx.fillText("position, or slow movement stutters.", 420, rowY + 86);
+
+  /* ---- the switch states ---- */
+  ctx.font = "12px ui-monospace, Menlo, monospace";
+  ctx.fillStyle = "#8793a4";
+  ctx.fillText("zoom " + zoom + "x   rounding " + (rounding ? "ON" : "off") +
+               "   translate pair " + (useTranslatePair ? "ON" : "off"),
+               canvas.width - 330, 32);
+}
+
+let lastTime = 0;
+function frame(now) {
+  let dt = (now - lastTime) / 1000;
+  lastTime = now;
+  if (dt > 0.05) { dt = 0.05; }
+  update(dt);
+  draw();
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

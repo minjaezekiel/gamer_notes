@@ -1,0 +1,210 @@
+<!doctype html>
+<!-- ===========================================================================
+     02-friction-and-frame-rate.html — the bug that only shows on someone
+     else's computer.
+
+     WHAT THIS DEMONSTRATES
+     Three identical ships, with identical numbers, running at 20, 60 and 144
+     frames per second. Each one gets the SAME push for the SAME length of time
+     and then coasts.
+
+       * with drag written PER FRAME  (vel *= 0.98) they stop in three different
+         places, and the slow machine's ship travels furthest
+       * with drag written PER SECOND (vel *= exp(-DRAG*dt)) all three stop in
+         the same place, which is what the author intended all along
+
+     HOW TO RUN IT
+     Double-click. Press SPACE to switch between the two versions. Press R to
+     run the test again.
+
+     WHAT TO CHANGE FIRST
+     Nothing, the first time: watch both versions. Then change PER_FRAME_KEEP to
+     0.9 and see the gap become enormous.
+     ======================================================================== -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Friction and frame rate</title>
+<style>
+  body { background: #11151c; color: #e7ecf3; font-family: system-ui, sans-serif;
+         display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 16px; }
+  canvas { background: #0a0d12; border: 2px solid #2b3240; border-radius: 6px; }
+  p { max-width: 640px; font-size: 15px; line-height: 1.5; color: #a9b4c4; }
+  b { color: #ffd43b; }
+</style>
+</head>
+<body>
+<h1>The same code on three machines</h1>
+<canvas id="game" width="720" height="420"></canvas>
+<p><b>Space</b> switches between per-frame and per-second drag. <b>R</b> runs the
+   test again. Each ship is thrusted for exactly <b>0.8 s</b> and then left to coast.</p>
+
+<script>
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+
+const THRUST = 900;              // px/s per second
+const DRAG = 2.5;                // per second  (the correct version)
+const PER_FRAME_KEEP = 0.98;     // per frame   (the broken version)
+const THRUST_TIME = 0.8;         // seconds of push
+const START_X = 60;
+
+let perSecond = false;           // which version is running
+
+/* Three simulations. Each has its OWN fixed frame length, and we feed each one
+   as many of its own frames as fit into the real time that has passed. That is
+   an honest way to show three frame rates at once on one computer. */
+function makeSim(fps, y, colour) {
+  return { fps: fps, step: 1 / fps, accumulator: 0, y: y, colour: colour,
+           x: START_X, vel: 0, elapsed: 0, frames: 0, stoppedAt: null };
+}
+let sims = [];
+
+function reset() {
+  sims = [
+    makeSim(20,  130, "#ff6b6b"),
+    makeSim(60,  215, "#4dabf7"),
+    makeSim(144, 300, "#51cf66")
+  ];
+}
+reset();
+
+document.addEventListener("keydown", function (e) {
+  if (e.key === " ") { e.preventDefault(); perSecond = !perSecond; reset(); }
+  if (e.key === "r" || e.key === "R") { reset(); }
+});
+
+/* One frame of ONE simulation, with its own dt. */
+function stepSim(s) {
+  const dt = s.step;
+  s.frames += 1;
+  s.elapsed += dt;
+
+  if (s.elapsed <= THRUST_TIME) {
+    s.vel = s.vel + THRUST * dt;          // acceleration changes velocity
+  }
+
+  if (perSecond) {
+    /* PER SECOND: the factor shrinks as the frame gets shorter, so the total
+       over one second is identical at any frame rate. */
+    s.vel = s.vel * Math.exp(-DRAG * dt);
+  } else {
+    /* PER FRAME: the same factor however long the frame was. A 20 fps machine
+       applies it 20 times a second; a 144 fps machine applies it 144 times. */
+    s.vel = s.vel * PER_FRAME_KEEP;
+  }
+
+  s.x = s.x + s.vel * dt;                 // velocity changes position
+
+  if (s.stoppedAt === null && s.elapsed > THRUST_TIME && s.vel < 2) {
+    s.stoppedAt = s.x;
+  }
+}
+
+let lastTime = 0;
+function frame(now) {
+  let real = (now - lastTime) / 1000;
+  lastTime = now;
+  if (real > 0.1) { real = 0.1; }
+
+  for (let i = 0; i < sims.length; i++) {
+    const s = sims[i];
+    s.accumulator += real;
+    let guard = 0;
+    while (s.accumulator >= s.step && guard < 400) {
+      s.accumulator -= s.step;
+      stepSim(s);
+      guard += 1;
+    }
+  }
+
+  draw();
+  requestAnimationFrame(frame);
+}
+
+function draw() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  ctx.font = "bold 16px system-ui, sans-serif";
+  ctx.fillStyle = perSecond ? "#51cf66" : "#ff6b6b";
+  ctx.fillText(perSecond
+    ? "PER SECOND:  vel *= Math.exp(-" + DRAG + " * dt)      (correct)"
+    : "PER FRAME:   vel *= " + PER_FRAME_KEEP + "                     (the bug)",
+    20, 36);
+  ctx.font = "13px system-ui, sans-serif";
+  ctx.fillStyle = "#8793a4";
+  ctx.fillText("press SPACE to switch", 20, 56);
+
+  let minStop = Infinity, maxStop = -Infinity, allStopped = true;
+
+  for (let i = 0; i < sims.length; i++) {
+    const s = sims[i];
+
+    // the track
+    ctx.strokeStyle = "#1a2029";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(START_X, s.y + 26);
+    ctx.lineTo(canvas.width - 20, s.y + 26);
+    ctx.stroke();
+
+    // the start line
+    ctx.strokeStyle = "#394252";
+    ctx.beginPath();
+    ctx.moveTo(START_X, s.y - 2);
+    ctx.lineTo(START_X, s.y + 34);
+    ctx.stroke();
+
+    // where it stopped
+    if (s.stoppedAt !== null) {
+      ctx.strokeStyle = s.colour;
+      ctx.setLineDash([3, 4]);
+      ctx.beginPath();
+      ctx.moveTo(s.stoppedAt, s.y - 10);
+      ctx.lineTo(s.stoppedAt, s.y + 40);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      minStop = Math.min(minStop, s.stoppedAt);
+      maxStop = Math.max(maxStop, s.stoppedAt);
+    } else {
+      allStopped = false;
+    }
+
+    // the ship
+    ctx.fillStyle = s.colour;
+    ctx.beginPath();
+    ctx.moveTo(s.x + 13, s.y + 26);
+    ctx.lineTo(s.x - 9, s.y + 33);
+    ctx.lineTo(s.x - 9, s.y + 19);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.font = "bold 13px ui-monospace, Menlo, monospace";
+    ctx.fillText(String(s.fps).padStart(3) + " fps", 20, s.y + 14);
+    ctx.font = "12px ui-monospace, Menlo, monospace";
+    ctx.fillStyle = "#8793a4";
+    ctx.fillText("travelled " + Math.round(s.x - START_X) + " px" +
+                 (s.stoppedAt !== null ? "  (stopped)" : ""),
+                 20, s.y + 44);
+  }
+
+  if (allStopped) {
+    const gap = Math.round(maxStop - minStop);
+    ctx.font = "bold 15px system-ui, sans-serif";
+    ctx.fillStyle = gap > 20 ? "#ff6b6b" : "#51cf66";
+    ctx.fillText(gap > 20
+      ? "The three machines disagree by " + gap + " pixels."
+      : "All three agree to within " + gap + " pixels.",
+      20, 388);
+    ctx.font = "13px system-ui, sans-serif";
+    ctx.fillStyle = "#8793a4";
+    ctx.fillText(gap > 20
+      ? "Same code. Same numbers. Three different games. Press SPACE."
+      : "This is what the author meant to write. Press SPACE to see the other one.",
+      20, 408);
+  }
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

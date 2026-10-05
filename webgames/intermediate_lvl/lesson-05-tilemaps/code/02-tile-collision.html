@@ -1,0 +1,263 @@
+<!doctype html>
+<!-- ===========================================================================
+     02-tile-collision.html — the two-step move, with the working shown.
+
+     WHAT THIS DEMONSTRATES
+       * move X, fix X; then move Y, fix Y - and why one step cannot work
+       * only the tiles the player's box touches are ever tested (at most four)
+       * onGround comes out of the DOWNWARD test, not from a key press
+       * what the missing -0.001 does, on a key, so you can feel it
+
+     HOW TO RUN IT
+     Double-click. Arrow keys move, Space jumps.
+       B  the broken one-step version
+       E  remove the -0.001 (then walk down the narrow gap)
+       D  show / hide the debug overlay
+
+     WHAT TO CHANGE FIRST
+     Press B and walk diagonally into a corner. The player climbs the wall. Then
+     press B again and do the same thing: they slide along it instead, and you did
+     not write any sliding code.
+     ======================================================================== -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Tile collision</title>
+<style>
+  body { background: #11151c; color: #e7ecf3; font-family: system-ui, sans-serif;
+         display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 16px; }
+  canvas { background: #0a0d12; border: 2px solid #2b3240; border-radius: 6px; }
+  p { max-width: 650px; font-size: 15px; line-height: 1.5; color: #a9b4c4; }
+  b { color: #ffd43b; }
+</style>
+</head>
+<body>
+<h1>Two steps, never one</h1>
+<canvas id="game" width="720" height="450"></canvas>
+<p>Arrow keys &middot; <b>Space</b> jump &middot; <b>B</b> the one-step bug &middot;
+   <b>E</b> remove the <code>-0.001</code> &middot; <b>D</b> debug overlay.
+   The narrow gap on the right is exactly the player's width.</p>
+
+<script>
+const TILE = 32;
+const LEVEL = [
+  "##################",
+  "#................#",
+  "#..####..........#",
+  "#.....#...####...#",
+  "#.....#......#.#.#",     /* the single-column gap, for the -0.001 test */
+  "#..##........#.#.#",
+  "#...#....###...#.#",
+  "#...#..........#.#",
+  "#......####......#",
+  "#................#",
+  "##################"
+];
+const TILES = {
+  ".": { solid: false, colour: "#121820" },
+  "#": { solid: true,  colour: "#3c4756" }
+};
+const COLS = LEVEL[0].length, ROWS = LEVEL.length;
+const MAP_X = 20, MAP_Y = 56;
+
+function tileAt(col, row) {
+  if (col < 0 || row < 0 || row >= ROWS || col >= COLS) { return "#"; }
+  return LEVEL[row].charAt(col);
+}
+function isSolid(col, row) { return TILES[tileAt(col, row)].solid; }
+
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+
+const player = { x: TILE * 1.3, y: TILE * 1.2, w: 26, h: 26, vx: 0, vy: 0, onGround: false };
+
+const SPEED = 170, GRAVITY = 1500, JUMP = 520;
+let brokenOneStep = false;
+let noEpsilon = false;
+let showDebug = true;
+let tested = [];          // the tiles looked at this frame, for the overlay
+let fixedX = false, fixedY = false;
+let tryX = 0, tryY = 0;
+
+const keys = {};
+document.addEventListener("keydown", function (e) {
+  keys[e.key] = true;
+  if (e.key.startsWith("Arrow") || e.key === " ") { e.preventDefault(); }
+  if (e.key === "b" || e.key === "B") { brokenOneStep = !brokenOneStep; }
+  if (e.key === "e" || e.key === "E") { noEpsilon = !noEpsilon; }
+  if (e.key === "d" || e.key === "D") { showDebug = !showDebug; }
+});
+document.addEventListener("keyup", function (e) { keys[e.key] = false; });
+
+/* Which squares does this box touch? The epsilon stops a box whose edge is
+   exactly on a boundary from counting the next square along. */
+function range(box) {
+  const eps = noEpsilon ? 0 : 0.001;
+  return {
+    c0: Math.floor(box.x / TILE),
+    c1: Math.floor((box.x + box.w - eps) / TILE),
+    r0: Math.floor(box.y / TILE),
+    r1: Math.floor((box.y + box.h - eps) / TILE)
+  };
+}
+
+function findSolidOverlap(box, record) {
+  const r = range(box);
+  for (let row = r.r0; row <= r.r1; row++) {
+    for (let col = r.c0; col <= r.c1; col++) {
+      if (record) { tested.push({ col: col, row: row }); }
+      if (isSolid(col, row)) { return { col: col, row: row }; }
+    }
+  }
+  return null;
+}
+
+function update(dt) {
+  tested = [];
+  fixedX = false; fixedY = false;
+
+  player.vx = 0;
+  if (keys["ArrowRight"]) { player.vx = SPEED; }
+  if (keys["ArrowLeft"])  { player.vx = -SPEED; }
+  if (keys[" "] && player.onGround) { player.vy = -JUMP; player.onGround = false; }
+  player.vy = player.vy + GRAVITY * dt;
+
+  const dx = player.vx * dt;
+  const dy = player.vy * dt;
+  tryX = player.x + dx;
+  tryY = player.y + dy;
+
+  if (brokenOneStep) {
+    /* ---- THE BUG: one move, one test. ----
+       Both directions have already been applied, so when the box turns out to be
+       inside a wall there is no way to know WHICH one did it. Undoing both is the
+       usual guess, and at a corner it undoes the movement that was innocent. */
+    player.x = tryX;
+    player.y = tryY;
+    const hit = findSolidOverlap(player, true);
+    if (hit) {
+      player.x = tryX - dx;
+      player.y = tryY - dy;
+      /* and now we have to guess about onGround too, which is why the player can
+         climb: any contact looks like standing on something. */
+      player.onGround = true;
+      player.vy = 0;
+      fixedX = true; fixedY = true;
+    } else {
+      player.onGround = false;
+    }
+    return;
+  }
+
+  /* ---- STEP 1: X only. The fix KNOWS it is undoing horizontal movement. ---- */
+  player.x = player.x + dx;
+  const hitX = findSolidOverlap(player, true);
+  if (hitX) {
+    if (dx > 0) { player.x = hitX.col * TILE - player.w; }
+    else if (dx < 0) { player.x = (hitX.col + 1) * TILE; }
+    player.vx = 0;
+    fixedX = true;
+  }
+
+  /* ---- STEP 2: Y only, from the already-corrected X. ---- */
+  player.onGround = false;
+  player.y = player.y + dy;
+  const hitY = findSolidOverlap(player, true);
+  if (hitY) {
+    if (dy > 0) {
+      player.y = hitY.row * TILE - player.h;
+      player.onGround = true;      /* THIS is where "standing on the floor" comes from */
+    } else if (dy < 0) {
+      player.y = (hitY.row + 1) * TILE;
+    }
+    player.vy = 0;
+    fixedY = true;
+  }
+}
+
+function draw() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  for (let row = 0; row < ROWS; row++) {
+    for (let col = 0; col < COLS; col++) {
+      ctx.fillStyle = TILES[tileAt(col, row)].colour;
+      ctx.fillRect(MAP_X + col * TILE, MAP_Y + row * TILE, TILE, TILE);
+      ctx.strokeStyle = "#171d26";
+      ctx.lineWidth = 1;
+      ctx.strokeRect(MAP_X + col * TILE, MAP_Y + row * TILE, TILE, TILE);
+    }
+  }
+
+  if (showDebug) {
+    /* every tile tested this frame - usually four, never more than six */
+    ctx.strokeStyle = "#f08c00";
+    ctx.lineWidth = 2;
+    for (let i = 0; i < tested.length; i++) {
+      ctx.strokeRect(MAP_X + tested[i].col * TILE + 1, MAP_Y + tested[i].row * TILE + 1,
+                     TILE - 2, TILE - 2);
+    }
+    /* where the player tried to go */
+    ctx.strokeStyle = "#6b7480";
+    ctx.setLineDash([4, 4]);
+    ctx.strokeRect(MAP_X + tryX, MAP_Y + tryY, player.w, player.h);
+    ctx.setLineDash([]);
+  }
+
+  ctx.fillStyle = player.onGround ? "#51cf66" : "#4dabf7";
+  ctx.fillRect(MAP_X + Math.round(player.x), MAP_Y + Math.round(player.y),
+               player.w, player.h);
+
+  /* ---- the readouts ---- */
+  const px = MAP_X + COLS * TILE + 22;
+  ctx.font = "bold 13px system-ui, sans-serif";
+  ctx.fillStyle = brokenOneStep ? "#ff6b6b" : "#51cf66";
+  ctx.fillText(brokenOneStep ? "ONE STEP (broken)" : "TWO STEPS (correct)", px, MAP_Y + 4);
+
+  ctx.font = "12px ui-monospace, Menlo, monospace";
+  const lines = brokenOneStep
+    ? ["1. x += dx AND y += dy", "2. in a wall?", "3. undo BOTH (a guess)"]
+    : ["1. x += dx", "2. fix x, vx = 0", "3. y += dy", "4. fix y, vy = 0, onGround"];
+  for (let i = 0; i < lines.length; i++) {
+    ctx.fillStyle = "#8793a4";
+    ctx.fillText(lines[i], px, MAP_Y + 28 + i * 18);
+  }
+
+  const iy = MAP_Y + 120;
+  ctx.fillStyle = fixedX ? "#ff6b6b" : "#6b7480";
+  ctx.fillText("x fixed   " + (fixedX ? "YES" : "no"), px, iy);
+  ctx.fillStyle = fixedY ? "#ff9f43" : "#6b7480";
+  ctx.fillText("y fixed   " + (fixedY ? "YES" : "no"), px, iy + 18);
+  ctx.fillStyle = player.onGround ? "#51cf66" : "#6b7480";
+  ctx.fillText("onGround  " + player.onGround, px, iy + 36);
+  ctx.fillStyle = "#8793a4";
+  ctx.fillText("tested    " + tested.length + " of " + (COLS * ROWS) + " tiles", px, iy + 60);
+  ctx.fillText("vy        " + player.vy.toFixed(0), px, iy + 78);
+
+  ctx.fillStyle = noEpsilon ? "#ff6b6b" : "#6b7480";
+  ctx.fillText("epsilon   " + (noEpsilon ? "OFF (press E)" : "on"), px, iy + 102);
+  if (noEpsilon) {
+    ctx.font = "11.5px system-ui, sans-serif";
+    ctx.fillStyle = "#ff6b6b";
+    ctx.fillText("walk into the single-column", px, iy + 124);
+    ctx.fillText("gap on the right: you will", px, iy + 140);
+    ctx.fillText("stick in a space you fit.", px, iy + 156);
+  }
+
+  ctx.font = "bold 15px system-ui, sans-serif";
+  ctx.fillStyle = "#e7ecf3";
+  ctx.fillText("player is " + player.w + " px wide, tiles are " + TILE + " px", MAP_X, 34);
+}
+
+let lastTime = 0;
+function frame(now) {
+  let dt = (now - lastTime) / 1000;
+  lastTime = now;
+  if (dt > 0.05) { dt = 0.05; }
+  update(dt);
+  draw();
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

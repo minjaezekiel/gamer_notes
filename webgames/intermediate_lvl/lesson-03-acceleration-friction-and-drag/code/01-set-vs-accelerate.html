@@ -1,0 +1,199 @@
+<!doctype html>
+<!-- ===========================================================================
+     01-set-vs-accelerate.html — one line apart, and worlds apart to fly.
+
+     WHAT THIS DEMONSTRATES
+     Ship A sets its velocity (beginner level). Ship B adds to its velocity and
+     loses a share of it every second. Same keys, same frame, same everything
+     else.
+
+     HOW TO RUN IT
+     Double-click. LEFT / RIGHT turn BOTH ships, UP thrusts BOTH.
+
+     WHAT TO CHANGE FIRST
+     Get up to speed, then turn hard. Ship A changes direction instantly. Ship B
+     keeps going roughly the way it was and curves round. That curve is momentum,
+     and it is the only difference between the two.
+     ======================================================================== -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Set it, or build it up</title>
+<style>
+  body { background: #11151c; color: #e7ecf3; font-family: system-ui, sans-serif;
+         display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 16px; }
+  canvas { background: #0a0d12; border: 2px solid #2b3240; border-radius: 6px; }
+  p { max-width: 620px; font-size: 15px; line-height: 1.5; color: #a9b4c4; }
+  b { color: #ffd43b; }
+</style>
+</head>
+<body>
+<h1>One line apart</h1>
+<canvas id="game" width="700" height="420"></canvas>
+<p><b>&larr; &rarr;</b> turn &middot; <b>&uarr;</b> thrust. Both ships obey the same keys at
+   the same moment. The dashed trail is where each one has been.</p>
+
+<script>
+class Vec2 {
+  constructor(x, y) { this.x = x; this.y = y; }
+  add(o)   { return new Vec2(this.x + o.x, this.y + o.y); }
+  scale(k) { return new Vec2(this.x * k, this.y * k); }
+  length() { return Math.hypot(this.x, this.y); }
+  normalise() {
+    const l = this.length();
+    return l === 0 ? new Vec2(0, 0) : new Vec2(this.x / l, this.y / l);
+  }
+  static fromAngle(r) { return new Vec2(Math.cos(r), Math.sin(r)); }
+}
+
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+
+const SPEED = 240;        // ship A: the speed it moves at while thrusting
+const THRUST = 700;       // ship B: how hard it is pushed, px/s per second
+const DRAG = 1.2;         // ship B: share of speed lost per second
+const MAX_SPEED = 320;
+const TURN_SPEED = 3.0;
+
+function makeShip(x, colour, label) {
+  return { pos: new Vec2(x, 210), vel: new Vec2(0, 0), angle: -Math.PI / 2,
+           colour: colour, label: label, trail: [] };
+}
+const shipA = makeShip(175, "#4dabf7", "A — velocity SET");
+const shipB = makeShip(525, "#ff9f43", "B — velocity BUILT UP");
+
+const keys = {};
+document.addEventListener("keydown", function (e) {
+  keys[e.key] = true;
+  if (e.key.startsWith("Arrow")) { e.preventDefault(); }
+});
+document.addEventListener("keyup", function (e) { keys[e.key] = false; });
+
+function turn(ship, dt) {
+  if (keys["ArrowLeft"])  { ship.angle -= TURN_SPEED * dt; }
+  if (keys["ArrowRight"]) { ship.angle += TURN_SPEED * dt; }
+}
+
+/* Each ship stays in its own half of the screen, so they can be compared. */
+function keepInHalf(ship, left, right) {
+  if (ship.pos.x < left + 12)  { ship.pos.x = left + 12;  ship.vel.x = Math.abs(ship.vel.x); }
+  if (ship.pos.x > right - 12)  { ship.pos.x = right - 12; ship.vel.x = -Math.abs(ship.vel.x); }
+  if (ship.pos.y < 44)          { ship.pos.y = 44;         ship.vel.y = Math.abs(ship.vel.y); }
+  if (ship.pos.y > canvas.height - 12) {
+    ship.pos.y = canvas.height - 12; ship.vel.y = -Math.abs(ship.vel.y);
+  }
+}
+
+function update(dt) {
+  const noseA = Vec2.fromAngle(shipA.angle);
+  const noseB = Vec2.fromAngle(shipB.angle);
+  turn(shipA, dt);
+  turn(shipB, dt);
+
+  /* ---- SHIP A: the velocity IS the input. No memory at all. ---- */
+  if (keys["ArrowUp"]) { shipA.vel = noseA.scale(SPEED); }
+  else                 { shipA.vel = new Vec2(0, 0); }
+  shipA.pos = shipA.pos.add(shipA.vel.scale(dt));
+
+  /* ---- SHIP B: the input PUSHES. The velocity remembers. ---- */
+  let acceleration = new Vec2(0, 0);
+  if (keys["ArrowUp"]) { acceleration = acceleration.add(noseB.scale(THRUST)); }
+  shipB.vel = shipB.vel.add(acceleration.scale(dt));     // push changes speed
+  shipB.vel = shipB.vel.scale(Math.exp(-DRAG * dt));     // lose a share per SECOND
+  if (shipB.vel.length() > MAX_SPEED) {                  // limit the LENGTH
+    shipB.vel = shipB.vel.normalise().scale(MAX_SPEED);
+  }
+  shipB.pos = shipB.pos.add(shipB.vel.scale(dt));        // speed changes place
+
+  keepInHalf(shipA, 0, canvas.width / 2);
+  keepInHalf(shipB, canvas.width / 2, canvas.width);
+
+  [shipA, shipB].forEach(function (s) {
+    if (s.vel.length() > 2) {
+      s.trail.push(new Vec2(s.pos.x, s.pos.y));
+      if (s.trail.length > 120) { s.trail.shift(); }
+    }
+  });
+}
+
+function drawShip(s) {
+  ctx.globalAlpha = 1;
+  for (let i = 0; i < s.trail.length; i++) {
+    ctx.globalAlpha = 0.04 + 0.3 * (i / s.trail.length);
+    ctx.fillStyle = s.colour;
+    ctx.beginPath();
+    ctx.arc(s.trail[i].x, s.trail[i].y, 2.5, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+
+  ctx.save();
+  ctx.translate(s.pos.x, s.pos.y);
+  ctx.rotate(s.angle);
+  ctx.strokeStyle = s.colour;
+  ctx.lineWidth = 2.5;
+  ctx.beginPath();
+  ctx.moveTo(15, 0);
+  ctx.lineTo(-10, 8);
+  ctx.lineTo(-5, 0);
+  ctx.lineTo(-10, -8);
+  ctx.closePath();
+  ctx.stroke();
+  ctx.restore();
+
+  /* the velocity arrow: B's is often pointing somewhere other than its nose,
+     which is exactly the thing to notice */
+  if (s.vel.length() > 5) {
+    const tip = s.pos.add(s.vel.scale(0.22));
+    ctx.strokeStyle = "#51cf66";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(s.pos.x, s.pos.y);
+    ctx.lineTo(tip.x, tip.y);
+    ctx.stroke();
+  }
+}
+
+function draw() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  ctx.strokeStyle = "#2b3240";
+  ctx.setLineDash([6, 6]);
+  ctx.beginPath();
+  ctx.moveTo(canvas.width / 2, 0);
+  ctx.lineTo(canvas.width / 2, canvas.height);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  drawShip(shipA);
+  drawShip(shipB);
+
+  ctx.font = "bold 14px system-ui, sans-serif";
+  ctx.fillStyle = shipA.colour;
+  ctx.fillText(shipA.label, 14, 24);
+  ctx.fillStyle = shipB.colour;
+  ctx.fillText(shipB.label, canvas.width / 2 + 14, 24);
+
+  ctx.font = "12px ui-monospace, Menlo, monospace";
+  ctx.fillStyle = "#8793a4";
+  ctx.fillText("vel = nose * " + SPEED, 14, 40);
+  ctx.fillText("speed " + shipA.vel.length().toFixed(0), 14, canvas.height - 14);
+  ctx.fillText("vel += nose * " + THRUST + " * dt,  then * exp(-" + DRAG + "*dt)",
+               canvas.width / 2 + 14, 40);
+  ctx.fillText("speed " + shipB.vel.length().toFixed(0),
+               canvas.width / 2 + 14, canvas.height - 14);
+}
+
+let lastTime = 0;
+function frame(now) {
+  let dt = (now - lastTime) / 1000;
+  lastTime = now;
+  if (dt > 0.05) { dt = 0.05; }
+  update(dt);
+  draw();
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

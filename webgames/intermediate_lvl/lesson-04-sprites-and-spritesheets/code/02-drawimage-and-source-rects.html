@@ -1,0 +1,193 @@
+<!doctype html>
+<!-- ===========================================================================
+     02-drawimage-and-source-rects.html — the three forms, side by side.
+
+     WHAT THIS DEMONSTRATES
+     Why drawImage(img, x, y, w, h) puts your WHOLE spritesheet on screen, and
+     what the nine-argument form does instead. The source rectangle is draggable,
+     so the numbers and the picture move together.
+
+     HOW TO RUN IT
+     Double-click. Drag the orange rectangle over the sheet, or use the arrow keys
+     to step it one whole cell at a time.
+
+     WHAT TO CHANGE FIRST
+     Drag the source rectangle half off the right-hand edge of the sheet. The
+     destination shows only the part that existed - no error, no warning. Then drag
+     it completely off: nothing is drawn at all. That silence is why "my sprite
+     disappeared" is usually a source-rectangle problem.
+     ======================================================================== -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>drawImage, all three forms</title>
+<style>
+  body { background: #11151c; color: #e7ecf3; font-family: system-ui, sans-serif;
+         display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 16px; }
+  canvas { background: #0a0d12; border: 2px solid #2b3240; border-radius: 6px; cursor: crosshair; }
+  p { max-width: 640px; font-size: 15px; line-height: 1.5; color: #a9b4c4; }
+  b { color: #ffd43b; }
+</style>
+</head>
+<body>
+<h1>Where the numbers go</h1>
+<canvas id="view" width="740" height="470"></canvas>
+<p>Drag the orange rectangle, or use the <b>arrow keys</b> to move it one cell at a
+   time. The three boxes on the right are the three forms of <code>drawImage</code>,
+   all given the same sheet.</p>
+
+<script>
+const FRAME_W = 24, FRAME_H = 32, COLS = 6, ROWS = 3;
+const SHEET_ZOOM = 5;
+
+function drawPose(c, ox, oy, phase, mode) {
+  const midX = ox + FRAME_W / 2;
+  const swing = Math.sin(phase * Math.PI * 2);
+  const headY = oy + 8;
+  c.fillStyle = "#ffd9a0"; c.fillRect(midX - 4, headY - 6, 8, 7);
+  c.fillStyle = "#4dabf7"; c.fillRect(midX - 4, headY + 1, 8, 10);
+  c.fillStyle = "#ffd9a0";
+  c.fillRect(midX - 6 - swing * 2, headY + 2, 3, 7);
+  c.fillRect(midX + 3 + swing * 2, headY + 2, 3, 7);
+  c.fillStyle = "#2b3240";
+  const lead = mode === "walk" ? Math.round(swing * 3) : 0;
+  c.fillRect(midX - 4 + lead, headY + 11, 3, 10);
+  c.fillRect(midX + 1 - lead, headY + 11, 3, 10);
+}
+
+function buildSheet() {
+  const sheet = document.createElement("canvas");
+  sheet.width = FRAME_W * COLS;
+  sheet.height = FRAME_H * ROWS;
+  const c = sheet.getContext("2d");
+  const modes = ["idle", "walk", "jump"];
+  for (let row = 0; row < ROWS; row++) {
+    for (let col = 0; col < COLS; col++) {
+      drawPose(c, col * FRAME_W, row * FRAME_H, col / COLS, modes[row]);
+    }
+  }
+  return sheet;
+}
+const sheet = buildSheet();
+
+const view = document.getElementById("view");
+const ctx = view.getContext("2d");
+
+const SHEET_X = 24, SHEET_Y = 70;
+/* The source rectangle, in SHEET pixels (not screen pixels). */
+let src = { x: 0, y: FRAME_H, w: FRAME_W, h: FRAME_H };
+let dragging = false;
+
+function toSheet(ev) {
+  const b = view.getBoundingClientRect();
+  return {
+    x: (ev.clientX - b.left - SHEET_X) / SHEET_ZOOM,
+    y: (ev.clientY - b.top - SHEET_Y) / SHEET_ZOOM
+  };
+}
+view.addEventListener("mousedown", function (e) { dragging = true; moveSrc(e); });
+view.addEventListener("mousemove", function (e) { if (dragging) { moveSrc(e); } });
+window.addEventListener("mouseup", function () { dragging = false; });
+
+function moveSrc(e) {
+  const p = toSheet(e);
+  src.x = Math.round(p.x - src.w / 2);
+  src.y = Math.round(p.y - src.h / 2);
+  draw();
+}
+
+document.addEventListener("keydown", function (e) {
+  if (e.key === "ArrowRight") { src.x += FRAME_W; e.preventDefault(); }
+  if (e.key === "ArrowLeft")  { src.x -= FRAME_W; e.preventDefault(); }
+  if (e.key === "ArrowDown")  { src.y += FRAME_H; e.preventDefault(); }
+  if (e.key === "ArrowUp")    { src.y -= FRAME_H; e.preventDefault(); }
+  draw();
+});
+
+function panel(x, y, w, h, title, colour) {
+  ctx.fillStyle = "#0e1319";
+  ctx.fillRect(x, y, w, h);
+  ctx.strokeStyle = colour;
+  ctx.lineWidth = 1.5;
+  ctx.strokeRect(x, y, w, h);
+  ctx.font = "bold 12.5px system-ui, sans-serif";
+  ctx.fillStyle = colour;
+  ctx.fillText(title, x, y - 6);
+}
+
+function draw() {
+  ctx.clearRect(0, 0, view.width, view.height);
+  ctx.imageSmoothingEnabled = false;
+
+  /* ---- the sheet ---- */
+  ctx.font = "bold 15px system-ui, sans-serif";
+  ctx.fillStyle = "#e7ecf3";
+  ctx.fillText("THE SHEET  (" + sheet.width + " x " + sheet.height + ")", SHEET_X, 44);
+  ctx.drawImage(sheet, 0, 0, sheet.width, sheet.height,
+                SHEET_X, SHEET_Y, sheet.width * SHEET_ZOOM, sheet.height * SHEET_ZOOM);
+  ctx.strokeStyle = "#2b3240";
+  ctx.lineWidth = 1;
+  for (let col = 0; col <= COLS; col++) {
+    ctx.beginPath();
+    ctx.moveTo(SHEET_X + col * FRAME_W * SHEET_ZOOM, SHEET_Y);
+    ctx.lineTo(SHEET_X + col * FRAME_W * SHEET_ZOOM, SHEET_Y + sheet.height * SHEET_ZOOM);
+    ctx.stroke();
+  }
+  for (let row = 0; row <= ROWS; row++) {
+    ctx.beginPath();
+    ctx.moveTo(SHEET_X, SHEET_Y + row * FRAME_H * SHEET_ZOOM);
+    ctx.lineTo(SHEET_X + sheet.width * SHEET_ZOOM, SHEET_Y + row * FRAME_H * SHEET_ZOOM);
+    ctx.stroke();
+  }
+
+  /* the source rectangle, drawn where it really is */
+  ctx.strokeStyle = "#f08c00";
+  ctx.lineWidth = 2.5;
+  ctx.strokeRect(SHEET_X + src.x * SHEET_ZOOM, SHEET_Y + src.y * SHEET_ZOOM,
+                 src.w * SHEET_ZOOM, src.h * SHEET_ZOOM);
+
+  ctx.font = "13px ui-monospace, Menlo, monospace";
+  ctx.fillStyle = "#f08c00";
+  ctx.fillText("sx " + src.x + "   sy " + src.y + "   sw " + src.w + "   sh " + src.h,
+               SHEET_X, SHEET_Y + sheet.height * SHEET_ZOOM + 26);
+  ctx.fillStyle = "#8793a4";
+  ctx.fillText("col " + (src.x / FRAME_W) + "   row " + (src.y / FRAME_H) +
+               "   (sx = col * " + FRAME_W + ")",
+               SHEET_X, SHEET_Y + sheet.height * SHEET_ZOOM + 46);
+
+  /* ---- the three forms ---- */
+  const PX = 420, PW = 290, PH = 118;
+
+  panel(PX, 70, PW, PH, "drawImage(img, dx, dy)   — whole image, natural size", "#8793a4");
+  ctx.save();
+  ctx.beginPath(); ctx.rect(PX, 70, PW, PH); ctx.clip();
+  ctx.drawImage(sheet, PX + 8, 78);
+  ctx.restore();
+
+  panel(PX, 226, PW, PH,
+        "drawImage(img, dx, dy, dw, dh)   — THE BUG", "#ff6b6b");
+  ctx.drawImage(sheet, PX + 8, 234, FRAME_W * 3, FRAME_H * 3);
+  ctx.font = "11.5px system-ui, sans-serif";
+  ctx.fillStyle = "#ff6b6b";
+  ctx.fillText("the whole sheet, squashed into one", PX + 90, 262);
+  ctx.fillText("sprite's worth of space", PX + 90, 278);
+
+  panel(PX, 382, PW, 76,
+        "drawImage(img, sx,sy,sw,sh, dx,dy,dw,dh)   — correct", "#51cf66");
+  ctx.drawImage(sheet, src.x, src.y, src.w, src.h,
+                PX + 8, 388, FRAME_W * 2, FRAME_H * 2);
+  ctx.font = "11.5px system-ui, sans-serif";
+  ctx.fillStyle = "#51cf66";
+  ctx.fillText("one cell, drawn at 2x", PX + 70, 410);
+  const off = src.x < 0 || src.y < 0 ||
+              src.x + src.w > sheet.width || src.y + src.h > sheet.height;
+  if (off) {
+    ctx.fillStyle = "#f08c00";
+    ctx.fillText("source rect is partly outside the sheet:", PX + 70, 430);
+    ctx.fillText("you get only the part that exists.", PX + 70, 446);
+  }
+}
+draw();
+</script>
+</body>
+</html>

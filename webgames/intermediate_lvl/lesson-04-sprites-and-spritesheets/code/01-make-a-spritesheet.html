@@ -1,0 +1,230 @@
+<!doctype html>
+<!-- ===========================================================================
+     01-make-a-spritesheet.html — a spritesheet with no image file.
+
+     WHAT THIS DEMONSTRATES
+     A canvas you never add to the page is an image, as far as drawImage is
+     concerned. So you can DRAW your own spritesheet in code and use it exactly
+     like a .png.
+
+     Three real reasons to know this, beyond today:
+       * sprites made of numbers can be tweaked by editing a number
+       * something expensive can be drawn ONCE and reused every frame
+       * one drawing can be recoloured at load time into four team colours
+
+     HOW TO RUN IT
+     Double-click. Press G for the grid, N for the cell numbers, +/- to zoom.
+
+     WHAT TO CHANGE FIRST
+     In drawWalkPose, change `swing` from Math.sin to Math.cos and look at the
+     sheet. Every pose changes at once, because the sheet is generated rather than
+     drawn by hand. That is the advantage.
+     ======================================================================== -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Make a spritesheet in code</title>
+<style>
+  body { background: #11151c; color: #e7ecf3; font-family: system-ui, sans-serif;
+         display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 16px; }
+  canvas { background: #0a0d12; border: 2px solid #2b3240; border-radius: 6px;
+           image-rendering: pixelated; }
+  p { max-width: 640px; font-size: 15px; line-height: 1.5; color: #a9b4c4; }
+  b { color: #ffd43b; }
+</style>
+</head>
+<body>
+<h1>A spritesheet, generated</h1>
+<canvas id="view" width="720" height="440"></canvas>
+<p><b>G</b> grid &middot; <b>N</b> cell numbers &middot; <b>+</b> / <b>&minus;</b> zoom.
+   Three rows: idle, walk, jump. Six columns. Nothing was loaded from disk.</p>
+
+<script>
+/* ---------------------------------------------------------------------------
+   THE SHEET LAYOUT. Every other number in the lesson comes from these four.
+   ------------------------------------------------------------------------ */
+const FRAME_W = 24;
+const FRAME_H = 32;
+const COLS = 6;
+const ROWS = 3;
+
+const ROW_IDLE = 0, ROW_WALK = 1, ROW_JUMP = 2;
+
+/* ---------------------------------------------------------------------------
+   Drawing one pose. `phase` runs 0..1 around the cycle, `lift` raises the feet.
+   Everything is drawn relative to (ox, oy), the top-left of the cell, so the
+   same function can fill any cell of the grid.
+   ------------------------------------------------------------------------ */
+function drawPose(c, ox, oy, phase, mode) {
+  const midX = ox + FRAME_W / 2;
+  const swing = Math.sin(phase * Math.PI * 2);
+  const bob = mode === "walk" ? Math.abs(Math.cos(phase * Math.PI * 2)) * 1.5 : 0;
+  const breathe = mode === "idle" ? Math.sin(phase * Math.PI * 2) * 0.8 : 0;
+  const headY = oy + 8 + bob + breathe;
+
+  // head
+  c.fillStyle = "#ffd9a0";
+  c.fillRect(midX - 4, headY - 6, 8, 7);
+  // body
+  c.fillStyle = "#4dabf7";
+  c.fillRect(midX - 4, headY + 1, 8, 10);
+
+  // arms
+  c.fillStyle = "#ffd9a0";
+  if (mode === "jump") {
+    c.fillRect(midX - 7, headY + 1, 3, 7);
+    c.fillRect(midX + 4, headY + 1, 3, 7);
+  } else {
+    c.fillRect(midX - 6 - swing * 2, headY + 2, 3, 7);
+    c.fillRect(midX + 3 + swing * 2, headY + 2, 3, 7);
+  }
+
+  // legs
+  c.fillStyle = "#2b3240";
+  if (mode === "jump") {
+    c.fillRect(midX - 4, headY + 11, 3, 8);
+    c.fillRect(midX + 1, headY + 11, 3, 6);
+  } else if (mode === "idle") {
+    c.fillRect(midX - 4, headY + 11, 3, 10);
+    c.fillRect(midX + 1, headY + 11, 3, 10);
+  } else {
+    const lead = Math.round(swing * 3);
+    c.fillRect(midX - 4 + lead, headY + 11, 3, 10);
+    c.fillRect(midX + 1 - lead, headY + 11, 3, 10);
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   BUILD THE SHEET. This is the whole trick: a canvas element that is never
+   added to the document, filled in once, and then handed to drawImage.
+   ------------------------------------------------------------------------ */
+function buildSheet() {
+  const sheet = document.createElement("canvas");
+  sheet.width = FRAME_W * COLS;
+  sheet.height = FRAME_H * ROWS;
+  const c = sheet.getContext("2d");
+
+  // idle: two poses that matter, four that repeat them
+  for (let i = 0; i < COLS; i++) {
+    drawPose(c, i * FRAME_W, ROW_IDLE * FRAME_H, (i % 2) / 2, "idle");
+  }
+  // walk: a full cycle across all six
+  for (let i = 0; i < COLS; i++) {
+    drawPose(c, i * FRAME_W, ROW_WALK * FRAME_H, i / COLS, "walk");
+  }
+  // jump: one pose, repeated so the row is the same width as the others
+  for (let i = 0; i < COLS; i++) {
+    drawPose(c, i * FRAME_W, ROW_JUMP * FRAME_H, 0, "jump");
+  }
+  return sheet;
+}
+
+const sheet = buildSheet();
+
+const view = document.getElementById("view");
+const ctx = view.getContext("2d");
+let zoom = 6;
+let showGrid = true;
+let showNumbers = true;
+
+document.addEventListener("keydown", function (e) {
+  if (e.key === "g" || e.key === "G") { showGrid = !showGrid; }
+  if (e.key === "n" || e.key === "N") { showNumbers = !showNumbers; }
+  if (e.key === "+" || e.key === "=") { zoom = Math.min(10, zoom + 1); }
+  if (e.key === "-" || e.key === "_") { zoom = Math.max(2, zoom - 1); }
+  draw();
+});
+
+function draw() {
+  ctx.clearRect(0, 0, view.width, view.height);
+  ctx.imageSmoothingEnabled = false;      // keep the pixels square
+
+  const ox = 30, oy = 70;
+  const w = sheet.width * zoom;
+  const h = sheet.height * zoom;
+
+  /* The three-argument form stretched by the destination size: the WHOLE sheet,
+     which here is exactly what we want. */
+  ctx.drawImage(sheet, 0, 0, sheet.width, sheet.height, ox, oy, w, h);
+
+  if (showGrid) {
+    ctx.strokeStyle = "#f08c00";
+    ctx.lineWidth = 1;
+    for (let col = 0; col <= COLS; col++) {
+      ctx.beginPath();
+      ctx.moveTo(ox + col * FRAME_W * zoom, oy);
+      ctx.lineTo(ox + col * FRAME_W * zoom, oy + h);
+      ctx.stroke();
+    }
+    for (let row = 0; row <= ROWS; row++) {
+      ctx.beginPath();
+      ctx.moveTo(ox, oy + row * FRAME_H * zoom);
+      ctx.lineTo(ox + w, oy + row * FRAME_H * zoom);
+      ctx.stroke();
+    }
+  }
+
+  if (showNumbers) {
+    ctx.font = "bold 11px ui-monospace, Menlo, monospace";
+    ctx.fillStyle = "#ffd43b";
+    for (let row = 0; row < ROWS; row++) {
+      for (let col = 0; col < COLS; col++) {
+        ctx.fillText(col + "," + row,
+          ox + col * FRAME_W * zoom + 3,
+          oy + row * FRAME_H * zoom + 13);
+      }
+    }
+  }
+
+  /* labels and the numbers a student needs in order to write drawImage */
+  ctx.font = "bold 15px system-ui, sans-serif";
+  ctx.fillStyle = "#e7ecf3";
+  ctx.fillText("the generated sheet, " + zoom + "x", ox, 40);
+  ctx.font = "12.5px ui-monospace, Menlo, monospace";
+  ctx.fillStyle = "#8793a4";
+  ctx.fillText("sheet is " + sheet.width + " x " + sheet.height + " px   " +
+               "(" + COLS + " cols x " + ROWS + " rows of " + FRAME_W + "x" + FRAME_H + ")",
+               ox, 58);
+
+  const px = ox + w + 24;
+  const rows = [
+    ["row 0", "idle"],
+    ["row 1", "walk"],
+    ["row 2", "jump"]
+  ];
+  ctx.font = "bold 13px system-ui, sans-serif";
+  ctx.fillStyle = "#e7ecf3";
+  ctx.fillText("ROWS", px, oy + 4);
+  for (let i = 0; i < rows.length; i++) {
+    ctx.font = "12.5px ui-monospace, Menlo, monospace";
+    ctx.fillStyle = "#8793a4";
+    ctx.fillText(rows[i][0] + "  " + rows[i][1], px, oy + 26 + i * 20);
+  }
+
+  ctx.font = "bold 13px system-ui, sans-serif";
+  ctx.fillStyle = "#e7ecf3";
+  ctx.fillText("TO DRAW ONE CELL", px, oy + 112);
+  ctx.font = "12px ui-monospace, Menlo, monospace";
+  ctx.fillStyle = "#ffd43b";
+  const lines = [
+    "sx = col * " + FRAME_W,
+    "sy = row * " + FRAME_H,
+    "",
+    "ctx.drawImage(sheet,",
+    "  sx, sy, " + FRAME_W + ", " + FRAME_H + ",",
+    "  x, y, " + (FRAME_W * 3) + ", " + (FRAME_H * 3) + ");"
+  ];
+  for (let i = 0; i < lines.length; i++) {
+    ctx.fillText(lines[i], px, oy + 134 + i * 17);
+  }
+
+  ctx.fillStyle = "#6b7480";
+  ctx.font = "12px system-ui, sans-serif";
+  ctx.fillText("No .png was loaded. The sheet is a", px, oy + 262);
+  ctx.fillText("canvas that was never added to", px, oy + 278);
+  ctx.fillText("the page.", px, oy + 294);
+}
+draw();
+</script>
+</body>
+</html>
