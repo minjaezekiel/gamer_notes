@@ -599,6 +599,48 @@
     resize();
     if (cfg.autoplay) { setPlaying(true); }
 
+    /* ---- SELF TEST (verification only; invisible to a student) ------------
+       tools/check_pages.js loads every page with ?selftest=N appended. Without
+       that parameter none of this runs.
+
+       Why it exists: loading a page only proves the FIRST frame drew. A crash
+       inside update() on frame 40, or a divide-by-zero that only happens when a
+       slider is at its minimum, would sit there undetected until a teacher hit
+       Play in front of a class. This steps the sketch, then flips every toggle
+       and pushes every slider to both ends, so those paths run too and any
+       error lands in the console where the checker can see it.
+
+       It is deferred with setTimeout so that the sliders and toggles the page
+       creates AFTER Anim.sketch() returns already exist by the time it runs.
+       ------------------------------------------------------------------- */
+    var selfTest = /[?&]selftest=(\d+)/.exec(global.location.search || '');
+    if (selfTest) {
+      global.setTimeout(function () {
+        var n = Math.min(400, Number(selfTest[1]) || 0);
+        var i;
+        for (i = 0; i < n; i++) { doStep(); }
+
+        var boxes = extras.querySelectorAll('input[type="checkbox"]');
+        var ranges = extras.querySelectorAll('input[type="range"]');
+        var j;
+        for (j = 0; j < boxes.length; j++) {
+          boxes[j].checked = !boxes[j].checked;
+          boxes[j].dispatchEvent(new Event('change'));
+          for (i = 0; i < 12; i++) { doStep(); }
+        }
+        for (j = 0; j < ranges.length; j++) {
+          var was = ranges[j].value;
+          var ends = [ranges[j].min, ranges[j].max, was];
+          for (var e = 0; e < ends.length; e++) {
+            ranges[j].value = ends[e];
+            ranges[j].dispatchEvent(new Event('input'));
+            for (i = 0; i < 8; i++) { doStep(); }
+          }
+        }
+        doReset();
+      }, 0);
+    }
+
     return api;
   }
 

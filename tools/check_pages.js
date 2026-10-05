@@ -23,6 +23,7 @@
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
+const http = require('http');
 const { execFileSync, spawn } = require('child_process');
 
 const ROOT = path.resolve(__dirname, '..');
@@ -36,7 +37,12 @@ const JOBS = Math.max(1, Number(flag('--jobs', 4)));
 // templates/ holds {{PLACEHOLDER}} paths that only resolve once a lesson is
 // scaffolded from them, so they are not checked here.
 const SKIP_DIRS = new Set(['.git', 'node_modules', '__pycache__', '.build',
-                           'handouts', 'templates']);
+                           'handouts', 'templates',
+                           /* tools/.venv holds pygame-ce for the verification
+                              scripts. It ships thousands of files, including
+                              pygame's own HTML docs, and none of it is course
+                              content. */
+                           '.venv']);
 
 let fails = 0, checked = 0;
 const rel = f => path.relative(ROOT, f);
@@ -66,22 +72,93 @@ for (const f of pick('.js')) {
 console.log('\n== Inline scripts in HTML ==');
 const htmlFiles = pick('.html');
 for (const f of htmlFiles) {
-  const src = fs.readFileSync(f, 'utf8');
-  const blocks = [...src.matchAll(/<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/gi)];
+  // HTML comments are stripped first. Several lesson files explain script tags
+  // INSIDE a comment, and the word <script> in prose would otherwise be read as
+  // the start of a real block, making the following English into "JavaScript".
+  const src = fs.readFileSync(f, 'utf8').replace(/<!--[\s\S]*?-->/g, '');
+  const blocks = [...src.matchAll(/<script((?![^>]*\bsrc=)[^>]*)>([\s\S]*?)<\/script>/gi)];
   if (!blocks.length) continue;
   checked++;
   let bad = null;
   blocks.forEach((b, i) => {
     if (bad) return;
-    try { new Function(b[1]); } catch (e) { bad = `block ${i + 1}: ${e.message}`; }
+    const isModule = /type\s*=\s*["']module["']/.test(b[1]);
+    try {
+      if (isModule) {
+        // new Function() refuses `import`, so a module block goes through
+        // node --check instead, which accepts module syntax.
+        const tmp = path.join(os.tmpdir(), 'gdb-mod-' + process.pid + '-' + i + '.mjs');
+        fs.writeFileSync(tmp, b[2]);
+        try { execFileSync(process.execPath, ['--check', tmp], { stdio: 'pipe' }); }
+        finally { fs.rmSync(tmp, { force: true }); }
+      } else {
+        new Function(b[2]);
+      }
+    } catch (e) {
+      const msg = (e.stderr ? e.stderr.toString() : e.message)
+        .split('\n').filter(l => /Error|\^/.test(l)).slice(0, 2).join(' ').trim();
+      bad = `block ${i + 1}: ${msg || e.message}`;
+    }
   });
   bad ? fail(f, bad) : ok(f, `${blocks.length} inline block(s)`);
 }
 
-/* ---- 3. real Chrome load, N pages at a time ------------------------------ */
-function chromeCheck(file, profileDir) {
+/* ---- a local static server, for ES module pages --------------------------
+   A browser refuses to `import` across a file:// URL: each local file counts
+   as its own origin, so the import is blocked as a cross-origin request. That
+   is not a bug in the lesson, it is the security model, and it means any page
+   using <script type="module"> has to be SERVED to be tested honestly.
+
+   So: if any page uses modules, we start a 40-line static server here and load
+   those pages over http://127.0.0.1. Everything else still loads from file://,
+   because that is how a student will open it.
+   ---------------------------------------------------------------------- */
+const MIME = {
+  '.html': 'text/html', '.js': 'text/javascript', '.mjs': 'text/javascript',
+  '.css': 'text/css', '.json': 'application/json', '.svg': 'image/svg+xml',
+  '.png': 'image/png', '.md': 'text/plain', '.txt': 'text/plain'
+};
+
+function startServer() {
   return new Promise(resolve => {
-    const base = path.basename(file, '.html');
+    const server = http.createServer((req, res) => {
+      const rel = decodeURIComponent(req.url.split('?')[0]).replace(/^\/+/, '');
+      const full = path.resolve(ROOT, rel);
+      // Never serve anything outside the repository.
+      if (!full.startsWith(ROOT) || !fs.existsSync(full) || fs.statSync(full).isDirectory()) {
+        res.writeHead(404); return res.end('not found');
+      }
+      res.writeHead(200, { 'Content-Type': MIME[path.extname(full)] || 'application/octet-stream' });
+      fs.createReadStream(full).pipe(res);
+    });
+    server.listen(0, '127.0.0.1', () => resolve({
+      port: server.address().port,
+      close: () => server.close()
+    }));
+  });
+}
+
+const usesModules = file => /<script[^>]+type\s*=\s*["']module["']/.test(fs.readFileSync(file, 'utf8'));
+
+function pageUrl(file, port) {
+  /* ?selftest=N asks anim.js to step N frames on load, then flip every toggle
+     and push every slider to both ends. Without it, loading a page only proves
+     the first frame drew - a crash on frame 40, or one that needs a slider at
+     its minimum, would go unseen. See the SELF TEST block in shared/js/anim.js. */
+  const q = /Anim\.sketch\s*\(/.test(fs.readFileSync(file, 'utf8')) ? '?selftest=90' : '';
+  if (port && usesModules(file)) {
+    return 'http://127.0.0.1:' + port + '/' +
+           path.relative(ROOT, file).split(path.sep).map(encodeURIComponent).join('/') + q;
+  }
+  return 'file://' + file + q;
+}
+
+/* ---- 3. real Chrome load, N pages at a time ------------------------------ */
+function chromeCheck(file, profileDir, port) {
+  return new Promise(resolve => {
+    // Two examples can both be called index.html, so the scratch file name is
+    // built from the whole relative path rather than just the basename.
+    const base = rel(file).replace(/[^A-Za-z0-9]+/g, '_');
     const domPath = path.join(profileDir, base + '.dom');
     const logPath = path.join(profileDir, base + '.log');
     const fdOut = fs.openSync(domPath, 'w');
@@ -92,7 +169,7 @@ function chromeCheck(file, profileDir) {
       '--user-data-dir=' + path.join(profileDir, base),
       '--enable-logging=stderr', '--v=1',
       '--virtual-time-budget=2500',
-      '--dump-dom', 'file://' + file
+      '--dump-dom', pageUrl(file, port)
     ], { stdio: ['ignore', fdOut, fdErr] });
 
     const timer = setTimeout(() => child.kill('SIGKILL'), 45000);
@@ -142,23 +219,32 @@ async function runChrome() {
     console.log('\n== Chrome load ==\n  SKIPPED: Chrome not found at ' + CHROME);
     return;
   }
+  const modulePages = htmlFiles.filter(usesModules);
+  const srv = modulePages.length ? await startServer() : null;
   console.log(`\n== Chrome load (console errors + sketch init), ${JOBS} at a time ==`);
+  if (srv) {
+    console.log(`  ${modulePages.length} page(s) use ES modules and are served over ` +
+                `http://127.0.0.1:${srv.port} — file:// cannot import.`);
+  }
   const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'gdb-chrome-'));
   const queue = htmlFiles.slice();
   const results = [];
   async function worker() {
     while (queue.length) {
       const f = queue.shift();
-      results.push(await chromeCheck(f, profile));
+      results.push(await chromeCheck(f, profile, srv ? srv.port : null));
     }
   }
   await Promise.all(Array.from({ length: Math.min(JOBS, queue.length) }, worker));
   results.sort((a, b) => a.file.localeCompare(b.file));
   for (const r of results) {
     checked++;
-    r.err ? fail(r.file, r.err) : ok(r.file, r.note);
+    const note = [r.note, srv && usesModules(r.file) ? 'served' : null]
+      .filter(Boolean).join(', ');
+    r.err ? fail(r.file, r.err) : ok(r.file, note || null);
   }
   fs.rmSync(profile, { recursive: true, force: true });
+  if (srv) { srv.close(); }
 }
 
 /* ---- 4. relative links --------------------------------------------------- */

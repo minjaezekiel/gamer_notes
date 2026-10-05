@@ -1,0 +1,62 @@
+<!doctype html>
+<!-- ===========================================================================
+     04-the-cycle/index.html — a circular dependency, on purpose.
+
+     WHAT THIS DEMONSTRATES
+     What a circular import actually does to you. Not a clear error about
+     circularity: a complaint about a value not being ready, raised in the file
+     that was waiting rather than the file at fault.
+
+     HOW TO RUN IT
+     This uses modules, so it needs a server (see 03-modules for why):
+         cd 04-the-cycle && python3 -m http.server 8000
+     then open http://localhost:8000
+
+     WHAT TO CHANGE FIRST
+     In broken-hud.js, move `const startingScore = state.score;` INSIDE
+     drawHud(). Predict what happens before you reload. The import loop is still
+     there - but nothing reads the half-built module until both files have
+     finished loading, so it works. That is why some cycles hide for months.
+     ======================================================================== -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>A circular dependency</title>
+<style>
+  body { background: #11151c; color: #e7ecf3; font-family: system-ui, sans-serif;
+         padding: 24px; max-width: 760px; margin: 0 auto; line-height: 1.55; }
+  h1 { font-size: 22px; }
+  .ok, .bad { border-radius: 8px; padding: 12px 16px; margin: 16px 0; }
+  .ok  { background: #10291a; border: 2px solid #2b8a3e; }
+  .bad { background: #2b1414; border: 2px solid #c92a2a; }
+  h3 { margin: 0 0 8px; font-size: 16px; }
+  pre { margin: 0; white-space: pre-wrap; font-size: 13.5px; color: #cfd8e5; }
+  code { background: #1b2130; padding: 1px 5px; border-radius: 4px; }
+  #needs-server { background: #3b2a12; border: 2px solid #f08c00; border-radius: 8px;
+                  padding: 14px 18px; color: #ffd9a0; }
+</style>
+</head>
+<body>
+<h1>What a circular dependency actually looks like</h1>
+
+<div id="needs-server" hidden>
+  <p><strong>Opened from a file, so nothing can load.</strong> Modules cannot be
+  imported across <code>file://</code>. Run
+  <code>python3 -m http.server 8000</code> in this folder and open
+  <code>http://localhost:8000</code>.</p>
+</div>
+
+<p><code>broken-game.js</code> imports <code>broken-hud.js</code>, and
+<code>broken-hud.js</code> imports <code>broken-game.js</code> straight back. Below is
+what the browser does about it, followed by the same pair with one arrow removed.</p>
+
+<div id="out"></div>
+
+<script>
+  if (location.protocol === "file:") {
+    document.getElementById("needs-server").hidden = false;
+  }
+</script>
+<script type="module" src="main.js"></script>
+</body>
+</html>

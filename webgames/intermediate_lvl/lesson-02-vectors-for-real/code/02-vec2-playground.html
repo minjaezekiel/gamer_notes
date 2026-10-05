@@ -1,0 +1,203 @@
+<!doctype html>
+<!-- ===========================================================================
+     02-vec2-playground.html — every Vec2 operation, with numbers, live.
+
+     WHAT THIS DEMONSTRATES
+     add, sub, length, normalise, angle and dot, all on two arrows you drag with
+     the mouse. The point is to connect the picture to the numbers: when you can
+     predict the numbers from the picture, you understand vectors.
+
+     HOW TO RUN IT
+     This one imports ./vec2.js, so it is a module and needs a server:
+         python3 -m http.server 8000
+     then open http://localhost:8000/02-vec2-playground.html
+     (Opened by double-clicking, the page says so rather than sitting blank.)
+
+     WHAT TO CHANGE FIRST
+     Drag the red tip until its length reads exactly 50 with whole-number parts.
+     There are several: (30,40), (40,30), (50,0), (0,50), (14,48). Then check the
+     normalised version really does have length 1 every time.
+     ======================================================================== -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Vec2 playground</title>
+<style>
+  body { background: #11151c; color: #e7ecf3; font-family: system-ui, sans-serif;
+         display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 18px; }
+  canvas { background: #0a0d12; border: 2px solid #2b3240; border-radius: 6px; cursor: grab; }
+  p { max-width: 640px; font-size: 15px; line-height: 1.5; color: #a9b4c4; }
+  #needs-server { max-width: 600px; background: #3b2a12; border: 2px solid #f08c00;
+                  border-radius: 8px; padding: 14px 18px; color: #ffd9a0; }
+  code { background: #1b2130; padding: 1px 5px; border-radius: 4px; }
+</style>
+</head>
+<body>
+<h1>Vec2, with the numbers showing</h1>
+
+<div id="needs-server" hidden>
+  <p><strong>Opened from a file, so <code>vec2.js</code> could not be imported.</strong>
+  Run <code>python3 -m http.server 8000</code> in this folder and open
+  <code>http://localhost:8000/02-vec2-playground.html</code>. See lesson 1 for why.</p>
+</div>
+
+<canvas id="game" width="700" height="440"></canvas>
+<p><b>Drag the red and blue tips.</b> Everything else is worked out from them.
+   The green arrow is red + blue, drawn head to tail. The dashed arrow is red
+   normalised, drawn 60&times; longer so you can see it.</p>
+
+<script>
+  if (location.protocol === "file:") {
+    document.getElementById("needs-server").hidden = false;
+  }
+</script>
+<script type="module">
+import { Vec2 } from "./vec2.js";
+
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+
+/* The origin of both arrows. Vectors have no position of their own, so we have
+   to choose somewhere to draw them from. */
+const ORIGIN = new Vec2(200, 300);
+const UNIT_DRAW_LENGTH = 60;        // a length-1 arrow would be invisible
+
+let red  = new Vec2(120, -90);      // stored as OFFSETS from the origin
+let blue = new Vec2(60, 70);
+let dragging = null;
+
+function tipOf(v) { return ORIGIN.add(v); }
+
+canvas.addEventListener("mousedown", function (e) {
+  const b = canvas.getBoundingClientRect();
+  const m = new Vec2(e.clientX - b.left, e.clientY - b.top);
+  // isWithin compares squared distances, so no square root is taken.
+  if (m.isWithin(tipOf(red), 20))  { dragging = "red"; }
+  else if (m.isWithin(tipOf(blue), 20)) { dragging = "blue"; }
+});
+canvas.addEventListener("mousemove", function (e) {
+  if (!dragging) { return; }
+  const b = canvas.getBoundingClientRect();
+  const m = new Vec2(e.clientX - b.left, e.clientY - b.top);
+  const offset = m.sub(ORIGIN);     // screen position -> vector from the origin
+  if (dragging === "red") { red = offset; } else { blue = offset; }
+});
+window.addEventListener("mouseup", function () { dragging = null; });
+
+function arrow(from, to, colour, width, dashed) {
+  const d = to.sub(from);
+  if (d.length() < 1) { return; }
+  const dir = d.normalise();
+  const back = to.sub(dir.scale(12));
+  const side = new Vec2(-dir.y, dir.x);        // turn 90 degrees: swap and negate
+
+  ctx.strokeStyle = colour;
+  ctx.fillStyle = colour;
+  ctx.lineWidth = width;
+  ctx.setLineDash(dashed ? [7, 6] : []);
+  ctx.beginPath();
+  ctx.moveTo(from.x, from.y);
+  ctx.lineTo(back.x, back.y);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  ctx.beginPath();
+  ctx.moveTo(to.x, to.y);
+  ctx.lineTo(back.add(side.scale(6)).x, back.add(side.scale(6)).y);
+  ctx.lineTo(back.sub(side.scale(6)).x, back.sub(side.scale(6)).y);
+  ctx.closePath();
+  ctx.fill();
+}
+
+function row(label, value, y, colour) {
+  ctx.font = "13px system-ui, sans-serif";
+  ctx.fillStyle = "#8793a4";
+  ctx.fillText(label, 400, y);
+  ctx.font = "bold 14px ui-monospace, Menlo, monospace";
+  ctx.fillStyle = colour || "#e7ecf3";
+  ctx.fillText(value, 540, y);
+}
+
+function draw() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // axes through the origin, so the sign of each part is readable
+  ctx.strokeStyle = "#1a2029";
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(0, ORIGIN.y); ctx.lineTo(380, ORIGIN.y);
+  ctx.moveTo(ORIGIN.x, 0); ctx.lineTo(ORIGIN.x, canvas.height);
+  ctx.stroke();
+
+  const sum = red.add(blue);
+
+  /* add: draw blue starting where red ENDS. The green arrow lands in the same
+     place either way round, which is the whole meaning of "head to tail". */
+  arrow(tipOf(red), tipOf(sum), "#555f6e", 1.5, true);
+  arrow(ORIGIN, tipOf(sum), "#51cf66", 3);
+
+  arrow(ORIGIN, tipOf(red), "#ff6b6b", 3);
+  arrow(ORIGIN, tipOf(blue), "#4dabf7", 3);
+
+  // normalise, drawn long enough to see
+  arrow(ORIGIN, tipOf(red.normalise().scale(UNIT_DRAW_LENGTH)), "#ffd43b", 2, true);
+
+  // the draggable tips
+  [[red, "#ff6b6b"], [blue, "#4dabf7"]].forEach(function (pair) {
+    const t = tipOf(pair[0]);
+    ctx.fillStyle = pair[1];
+    ctx.beginPath();
+    ctx.arc(t.x, t.y, 9, 0, Math.PI * 2);
+    ctx.fill();
+  });
+
+  /* ---- the numbers ---- */
+  const unitRed = red.normalise();
+  const unitBlue = blue.normalise();
+  const dot = unitRed.dot(unitBlue);
+
+  ctx.font = "bold 14px system-ui, sans-serif";
+  ctx.fillStyle = "#e7ecf3";
+  ctx.fillText("THE NUMBERS", 400, 44);
+
+  row("red", red.toString(), 72, "#ff6b6b");
+  row("red.length()", red.length().toFixed(1), 94, "#ff6b6b");
+  row("red.normalise()", unitRed.toString(), 116, "#ffd43b");
+  row("  its length", unitRed.length().toFixed(3), 138, "#ffd43b");
+  row("red.angle()", (red.angle() * 180 / Math.PI).toFixed(0) + "°", 160, "#ff6b6b");
+
+  row("blue", blue.toString(), 196, "#4dabf7");
+  row("blue.length()", blue.length().toFixed(1), 218, "#4dabf7");
+
+  row("red.add(blue)", sum.toString(), 254, "#51cf66");
+  row("red.sub(blue)", red.sub(blue).toString(), 276);
+  row("distance", red.distanceTo(blue).toFixed(1), 298);
+
+  row("unit dot unit", dot.toFixed(3), 334, "#ffd43b");
+
+  ctx.font = "13px system-ui, sans-serif";
+  ctx.fillStyle = "#a9b4c4";
+  let meaning;
+  if (dot > 0.9)       { meaning = "pointing nearly the SAME way"; }
+  else if (dot > 0.25) { meaning = "roughly the same way"; }
+  else if (dot > -0.25){ meaning = "close to RIGHT ANGLES"; }
+  else if (dot > -0.9) { meaning = "roughly opposite"; }
+  else                 { meaning = "pointing nearly OPPOSITE ways"; }
+  ctx.fillText(meaning, 400, 356);
+
+  ctx.fillStyle = "#6b7480";
+  ctx.fillText("angle 0° points RIGHT, and angles", 400, 392);
+  ctx.fillText("grow CLOCKWISE, because y points down.", 400, 410);
+
+  if (red.length() === 0) {
+    ctx.fillStyle = "#ff6b6b";
+    ctx.fillText("red has length 0: there is no direction to", 400, 182);
+    ctx.fillText("normalise, so we return (0,0), not NaN.", 400, 200);
+  }
+
+  requestAnimationFrame(draw);
+}
+draw();
+</script>
+</body>
+</html>

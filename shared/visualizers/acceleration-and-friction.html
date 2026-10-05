@@ -1,0 +1,242 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Acceleration, Friction and Drag</title>
+<meta name="description" content="Drag the target and watch a ship chase it. Three numbers decide whether it feels like a spaceship, a car, or a brick.">
+<link rel="stylesheet" href="../css/notes.css">
+<link rel="stylesheet" href="../css/code.css">
+</head>
+<body>
+<div class="wrap">
+
+  <p class="breadcrumb"><a href="index.html">&larr; All visualizers</a></p>
+
+  <header class="lesson-head">
+    <p class="kicker">Concept 12 &middot; Works for JavaScript, Python and C++</p>
+    <h1>Acceleration, Friction and Drag</h1>
+    <p class="meta">Where &ldquo;feel&rdquo; actually lives. Used in: web I-L3 &middot; python I-L3 &middot; c++ I-L5</p>
+  </header>
+
+  <p class="lede">In the beginner lessons you set a speed directly: press right, move right. That is
+  the right place to start and the wrong place to stop, because every game whose movement people
+  describe as &ldquo;feeling good&rdquo; does something slightly different. It changes the
+  <strong>speed of the change</strong> and then takes a bit of it back every frame.</p>
+
+  <div class="look-for">
+    <strong>What to look for</strong>
+    <strong>Drag the orange target.</strong> The ship does not go to it; the ship <em>accelerates</em>
+    towards it, which is why it overshoots and swings back. Now set friction to 0 and drag the target
+    &mdash; the ship orbits forever and never settles, like something in space, because nothing is
+    taking energy out. Turn friction up and the same code feels like a car. The code never changed:
+    three numbers did.
+  </div>
+
+  <div id="accelDemo"></div>
+
+</div>
+
+<script src="../js/page.js"></script>
+<script src="../js/anim.js"></script>
+<script src="../js/codeblock.js"></script>
+<script>
+/* ---------------------------------------------------------------------------
+   Acceleration + friction + a speed limit, with a draggable target.
+
+   Two things this visualizer is built to make unavoidable:
+
+   1. Overshoot is not a bug. A thing with momentum that is pulled towards a
+      point WILL pass it. Every student who writes a chasing enemy meets this,
+      usually as "my enemy wobbles around the player".
+
+   2. Friction written as `vx *= 0.9` is frame-rate dependent, and the trap is
+      invisible. The toggle shows the same ship on a 20 fps budget: the
+      per-frame version comes out sluggish, the per-second version does not.
+   ------------------------------------------------------------------------ */
+(function () {
+  var ARENA_X = 24, ARENA_Y = 76, ARENA_W = 560, ARENA_H = 330;
+  var PANEL_X = 606;
+  var accelSlider, fricSlider, maxSlider, perFrameToggle;
+
+  var sk = Anim.sketch({
+    mount: '#accelDemo',
+    width: 900, height: 440,
+    fps: 30,
+    controls: ['play', 'step', 'reset', 'speed'],
+
+    state: function () {
+      return {
+        x: ARENA_X + 120, y: ARENA_Y + 220,
+        vx: 0, vy: 0,
+        ax: 0, ay: 0,
+        trail: [],
+        history: []            // speed over time, for the little graph
+      };
+    },
+
+    update: function (s, dt, api) {
+      var ACCEL = accelSlider ? accelSlider.value : 900;
+      var FRICTION = fricSlider ? fricSlider.value / 100 : 3;
+      var MAXSPEED = maxSlider ? maxSlider.value : 420;
+      var target = api.handle('target', ARENA_X + 430, ARENA_Y + 110, { hidden: true });
+
+      /* ---- 1. point the thrust at the target. Unit vector, then scale. ---- */
+      var dx = target.x - s.x, dy = target.y - s.y;
+      var len = Math.hypot(dx, dy);
+      if (len > 1) {
+        s.ax = (dx / len) * ACCEL;        // dividing by the length is NORMALISING:
+        s.ay = (dy / len) * ACCEL;        // direction kept, length forced to 1
+      } else {
+        s.ax = 0; s.ay = 0;
+      }
+
+      /* ---- 2. acceleration changes VELOCITY (not position) ---- */
+      s.vx = s.vx + s.ax * dt;
+      s.vy = s.vy + s.ay * dt;
+
+      /* ---- 3. friction takes a share of the velocity away ---- */
+      if (perFrameToggle && perFrameToggle.checked) {
+        /* THE TRAP. Looks harmless. The amount removed depends on how many
+           frames happen per second, so the ship is heavier on a slow machine. */
+        var perFrame = 1 - FRICTION / 60;
+        s.vx = s.vx * perFrame;
+        s.vy = s.vy * perFrame;
+      } else {
+        /* THE FIX. Removing a share "per second" survives any frame rate.
+           Math.exp is the tidy way; (1 - FRICTION * dt) is close enough for a
+           game and is what most lessons write. */
+        var keep = Math.exp(-FRICTION * dt);
+        s.vx = s.vx * keep;
+        s.vy = s.vy * keep;
+      }
+
+      /* ---- 4. a speed limit, applied to the COMBINED speed ---- */
+      var sp = Math.hypot(s.vx, s.vy);
+      if (sp > MAXSPEED) {
+        s.vx = (s.vx / sp) * MAXSPEED;
+        s.vy = (s.vy / sp) * MAXSPEED;
+      }
+
+      /* ---- 5. velocity changes POSITION ---- */
+      s.x = s.x + s.vx * dt;
+      s.y = s.y + s.vy * dt;
+
+      /* keep it in the arena, so a class cannot lose the ship */
+      if (s.x < ARENA_X + 10)            { s.x = ARENA_X + 10;            s.vx = -s.vx * 0.5; }
+      if (s.x > ARENA_X + ARENA_W - 10)  { s.x = ARENA_X + ARENA_W - 10;  s.vx = -s.vx * 0.5; }
+      if (s.y < ARENA_Y + 10)            { s.y = ARENA_Y + 10;            s.vy = -s.vy * 0.5; }
+      if (s.y > ARENA_Y + ARENA_H - 10)  { s.y = ARENA_Y + ARENA_H - 10;  s.vy = -s.vy * 0.5; }
+
+      s.trail.push({ x: s.x, y: s.y });
+      if (s.trail.length > 90) { s.trail.shift(); }
+      s.history.push(Math.hypot(s.vx, s.vy));
+      if (s.history.length > 130) { s.history.shift(); }
+    },
+
+    draw: function (s, g, api) {
+      var T = g.color;
+      var ACCEL = accelSlider ? accelSlider.value : 900;
+      var FRICTION = fricSlider ? fricSlider.value / 100 : 3;
+      var MAXSPEED = maxSlider ? maxSlider.value : 420;
+      g.clear();
+
+      g.rect(ARENA_X, ARENA_Y, ARENA_W, ARENA_H, T.panel);
+      g.strokeRect(ARENA_X, ARENA_Y, ARENA_W, ARENA_H, T.grid, 1);
+      g.text('DRAG THE ORANGE TARGET', ARENA_X, ARENA_Y - 34,
+        { size: 14, bold: true, color: T.muted });
+      g.text('the ship is pulled towards it, never placed on it', ARENA_X, ARENA_Y - 14,
+        { size: 12, color: T.muted });
+
+      /* the path it took: where it overshot is written on the floor */
+      g.ctx.save();
+      for (var i = 0; i < s.trail.length; i++) {
+        g.ctx.globalAlpha = 0.08 + 0.45 * (i / s.trail.length);
+        g.circle(s.trail[i].x, s.trail[i].y, 2.5, T.accent);
+      }
+      g.ctx.restore();
+
+      /* the two arrows. Students conflate them constantly, so they get
+         different colours, different lengths and labels every frame. */
+      var sp = Math.hypot(s.vx, s.vy);
+      if (sp > 4) {
+        g.arrow(s.x, s.y, s.x + s.vx * 0.22, s.y + s.vy * 0.22, T.good, 3.5);
+        g.text('velocity', s.x + s.vx * 0.22 + 6, s.y + s.vy * 0.22,
+          { size: 12, bold: true, color: T.good });
+      }
+      if (ACCEL > 0 && (s.ax || s.ay)) {
+        g.arrow(s.x, s.y, s.x + s.ax * 0.07, s.y + s.ay * 0.07, T.bad, 3);
+        g.text('thrust', s.x + s.ax * 0.07 + 6, s.y + s.ay * 0.07 + 14,
+          { size: 12, bold: true, color: T.bad });
+      }
+      g.circle(s.x, s.y, 11, T.accent);
+      g.ring(s.x, s.y, 15, T.accent, 1.5);
+
+      /* the target, drawn last so it stays grabbable and on top */
+      api.handle('target', ARENA_X + 430, ARENA_Y + 110, { label: 'target', color: T.accent2 });
+
+      /* ================= the numbers ================= */
+      g.text('EVERY FRAME, IN THIS ORDER', PANEL_X, ARENA_Y - 34,
+        { size: 14, bold: true, color: T.muted });
+      var lines = [
+        ['1. aim', 'normalise(target − me) × ' + ACCEL],
+        ['2. accelerate', 'v += a × dt'],
+        ['3. friction', perFrameToggle && perFrameToggle.checked
+            ? 'v *= ' + (1 - FRICTION / 60).toFixed(3) + '   ← per FRAME'
+            : 'v *= exp(−' + FRICTION.toFixed(1) + ' × dt)'],
+        ['4. speed limit', 'if |v| > ' + MAXSPEED + ' → scale down'],
+        ['5. move', 'pos += v × dt']
+      ];
+      for (var L = 0; L < lines.length; L++) {
+        var ly = ARENA_Y + 4 + L * 40;
+        g.text(lines[L][0], PANEL_X, ly, { size: 13, bold: true, color: T.ink });
+        g.text(lines[L][1], PANEL_X, ly + 17, { size: 12, mono: true, color: T.muted });
+      }
+
+      var ny = ARENA_Y + 214;
+      g.text('speed now:  ' + Math.round(sp) + ' px/s', PANEL_X, ny,
+        { size: 13.5, bold: true, mono: true, color: T.good });
+      g.text('limit:      ' + MAXSPEED + ' px/s', PANEL_X, ny + 20,
+        { size: 12.5, mono: true, color: T.muted });
+
+      /* the speed graph: overshoot becomes a wobble you can point at */
+      var gx = PANEL_X, gy = ny + 36, gw = 268, gh = 72;
+      g.rect(gx, gy, gw, gh, T.panel);
+      g.strokeRect(gx, gy, gw, gh, T.grid, 1);
+      for (var h = 1; h < s.history.length; h++) {
+        var x1 = gx + ((h - 1) / 130) * gw, x2 = gx + (h / 130) * gw;
+        var y1 = gy + gh - Math.min(1, s.history[h - 1] / 600) * gh;
+        var y2 = gy + gh - Math.min(1, s.history[h] / 600) * gh;
+        g.line(x1, y1, x2, y2, T.good, 1.8);
+      }
+      g.text('speed over time', gx + 4, gy + 14, { size: 11, color: T.muted });
+
+      if (FRICTION === 0) {
+        api.say('Friction is <strong>zero</strong>, so nothing removes energy. The ship can never ' +
+                'settle on the target — it swings past, gets pulled back, and swings past again. ' +
+                'This is correct physics and a terrible chasing enemy.');
+      } else if (perFrameToggle && perFrameToggle.checked) {
+        api.say('Friction is now <code>v *= ' + (1 - FRICTION / 60).toFixed(3) + '</code> ' +
+                '<strong>per frame</strong>. This sketch runs at ' + api.fps + ' fps, not 60, so ' +
+                'the ship is being slowed about ' + Math.round(60 / api.fps) +
+                '× too hard. The bug is in the units, not the number.');
+      } else {
+        api.say('Speed <strong>' + Math.round(sp) + ' px/s</strong>. Thrust pulls towards the ' +
+                'target; friction removes a fixed <em>share</em> of the velocity each second, ' +
+                'which is why it slows quickly when fast and gently when slow.');
+      }
+    },
+
+    onReset: function (s, api) {
+      api.say('Press <strong>Play</strong> and drag the target around the arena.');
+    }
+  });
+
+  accelSlider    = sk.slider('Thrust (px/s per s)', 0, 2500, 900, 50);
+  fricSlider     = sk.slider('Friction (per second ×100)', 0, 800, 300, 10);
+  maxSlider      = sk.slider('Max speed (px/s)', 40, 900, 420, 20);
+  perFrameToggle = sk.toggle('friction per frame (the units bug)', false);
+}());
+</script>
+</body>
+</html>

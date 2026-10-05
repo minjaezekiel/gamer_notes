@@ -48,7 +48,7 @@ else
       bad "${f#./}"
       printf '        %s\n' "$OUT" | head -6
     fi
-  done < <(find . -name '*.cpp' -not -path './.git/*' | sort)
+  done < <(find . -name '*.cpp' -not -path './.git/*' -not -path './tools/.venv/*' | sort)
   [ "$COUNT" -eq 0 ] && echo "  (no .cpp files yet)"
 fi
 
@@ -65,9 +65,11 @@ while IFS= read -r f; do
     bad "${f#./}"
     printf '        %s\n' "$OUT" | head -6
   fi
-done < <(find . -name '*.py' -not -path './.git/*' -not -path '*/__pycache__/*' | sort)
+done < <(find . -name '*.py' -not -path './.git/*' -not -path '*/__pycache__/*' \
+           -not -path './tools/.venv/*' | sort)
 [ "$COUNT" -eq 0 ] && echo "  (no .py files yet)"
-find . -name '__pycache__' -type d -not -path './.git/*' -exec rm -rf {} + 2>/dev/null
+find . -name '__pycache__' -type d -not -path './.git/*' -not -path './tools/.venv/*' \
+     -exec rm -rf {} + 2>/dev/null
 
 # ---------------------------------------------------------------------------
 # 2b. turtle / tkinter examples - actually RUN them
@@ -90,7 +92,8 @@ while IFS= read -r f; do
     bad "${f#./}"
     printf '        %s\n' "$OUT" | tail -8
   fi
-done < <(find . -name 'test_*.py' -not -path './.git/*' -not -path '*/__pycache__/*' | sort)
+done < <(find . -name 'test_*.py' -not -path './.git/*' -not -path '*/__pycache__/*' \
+           -not -path './tools/.venv/*' | sort)
 [ "$FOUND_TESTS" -eq 0 ] && echo "  (no test_*.py files yet)"
 
 # ---------------------------------------------------------------------------

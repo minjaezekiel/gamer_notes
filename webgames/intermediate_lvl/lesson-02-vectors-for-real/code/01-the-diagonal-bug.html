@@ -1,0 +1,160 @@
+<!doctype html>
+<!-- ===========================================================================
+     01-the-diagonal-bug.html — the bug beginner lesson 3 left on purpose.
+
+     WHAT THIS DEMONSTRATES
+     Moving right at 300 px/s and down at 300 px/s at the same time does not move
+     you at 300 px/s. It moves you at 424. The readout measures it live, so this
+     is not a claim you have to take on trust.
+
+     HOW TO RUN IT
+     Double-click. Arrow keys or WASD. Press F to toggle the fix.
+
+     WHAT TO CHANGE FIRST
+     Turn the fix on and off while moving diagonally and watch the speed number.
+     Then set SPEED to 600 and check the diagonal figure is still exactly
+     SPEED * 1.414 - the error scales, so it never goes away on its own.
+     ======================================================================== -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>The diagonal bug</title>
+<style>
+  body { background: #11151c; color: #e7ecf3; font-family: system-ui, sans-serif;
+         display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 18px; }
+  canvas { background: #0a0d12; border: 2px solid #2b3240; border-radius: 6px; }
+  p { max-width: 560px; font-size: 15px; line-height: 1.5; color: #a9b4c4; }
+  b { color: #ffd43b; }
+</style>
+</head>
+<body>
+<h1>Why diagonal movement cheats</h1>
+<canvas id="game" width="560" height="380"></canvas>
+<p>Arrow keys or WASD to move. Press <b>F</b> to switch the fix on and off.
+   Move straight, then diagonally, and watch the measured speed.</p>
+
+<script>
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+
+const SPEED = 300;                 // pixels per second, in any direction
+let fixOn = false;
+
+const player = { x: 280, y: 190, r: 12 };
+const keys = {};
+let measuredSpeed = 0;
+const trail = [];
+
+document.addEventListener("keydown", function (e) {
+  keys[e.key.toLowerCase()] = true;
+  if (e.key.startsWith("Arrow")) { e.preventDefault(); }
+  if (e.key === "f" || e.key === "F") { fixOn = !fixOn; }
+});
+document.addEventListener("keyup", function (e) { keys[e.key.toLowerCase()] = false; });
+
+function update(dt) {
+  /* ---- 1. collect the intent as ONE vector, not two decisions ---- */
+  let moveX = 0;
+  let moveY = 0;
+  if (keys["arrowright"] || keys["d"]) { moveX += 1; }
+  if (keys["arrowleft"]  || keys["a"]) { moveX -= 1; }
+  if (keys["arrowdown"]  || keys["s"]) { moveY += 1; }
+  if (keys["arrowup"]    || keys["w"]) { moveY -= 1; }
+
+  /* The length of that intent vector is the whole story:
+         one key  -> length 1
+         two keys -> length 1.414  (Pythagoras: sqrt(1+1))
+         no keys  -> length 0
+     The broken version uses it as-is, so two keys means 41% more push. */
+  const intentLength = Math.hypot(moveX, moveY);
+
+  if (fixOn && intentLength > 0) {
+    /* ---- 2. NORMALISE: keep the direction, force the length to 1 ----
+       The guard matters: with no keys down, intentLength is 0, and dividing by
+       zero would give NaN - which spreads and never recovers. */
+    moveX = moveX / intentLength;
+    moveY = moveY / intentLength;
+  }
+
+  /* ---- 3. scale by the speed you actually meant ---- */
+  const beforeX = player.x;
+  const beforeY = player.y;
+  player.x = player.x + moveX * SPEED * dt;
+  player.y = player.y + moveY * SPEED * dt;
+
+  // Keep it on screen.
+  player.x = Math.max(player.r, Math.min(canvas.width - player.r, player.x));
+  player.y = Math.max(player.r, Math.min(canvas.height - player.r, player.y));
+
+  /* Measure how far it ACTUALLY moved this frame, and turn that into a speed.
+     This is the honest number, not the number we intended. */
+  if (dt > 0) {
+    measuredSpeed = Math.hypot(player.x - beforeX, player.y - beforeY) / dt;
+  }
+
+  if (measuredSpeed > 1) {
+    trail.push({ x: player.x, y: player.y });
+    if (trail.length > 70) { trail.shift(); }
+  }
+}
+
+function draw() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // A faint grid, so diagonal motion is visibly diagonal.
+  ctx.strokeStyle = "#1a2029";
+  ctx.lineWidth = 1;
+  for (let x = 0; x < canvas.width; x += 40) {
+    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, canvas.height); ctx.stroke();
+  }
+  for (let y = 0; y < canvas.height; y += 40) {
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); ctx.stroke();
+  }
+
+  for (let i = 0; i < trail.length; i++) {
+    ctx.globalAlpha = 0.05 + 0.35 * (i / trail.length);
+    ctx.fillStyle = "#4dabf7";
+    ctx.beginPath();
+    ctx.arc(trail[i].x, trail[i].y, 3, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+
+  ctx.fillStyle = "#4dabf7";
+  ctx.beginPath();
+  ctx.arc(player.x, player.y, player.r, 0, Math.PI * 2);
+  ctx.fill();
+
+  // The readout: the whole point of the example.
+  ctx.font = "bold 20px ui-monospace, Menlo, monospace";
+  const tooFast = measuredSpeed > SPEED + 5;
+  ctx.fillStyle = tooFast ? "#ff6b6b" : "#51cf66";
+  ctx.fillText("speed " + measuredSpeed.toFixed(0).padStart(3, " ") + " px/s", 14, 32);
+
+  ctx.font = "14px system-ui, sans-serif";
+  ctx.fillStyle = "#a9b4c4";
+  ctx.fillText("intended: " + SPEED + " px/s", 14, 54);
+  ctx.fillStyle = fixOn ? "#51cf66" : "#ff6b6b";
+  ctx.fillText(fixOn ? "FIX ON  — normalised (press F)" : "FIX OFF — press F",
+               14, canvas.height - 16);
+
+  if (tooFast) {
+    ctx.fillStyle = "#ffd43b";
+    ctx.fillText("that is " + (measuredSpeed / SPEED).toFixed(3) + " x too fast  (sqrt(2) = 1.414)",
+                 14, 76);
+  }
+}
+
+let lastTime = 0;
+function frame(now) {
+  let dt = (now - lastTime) / 1000;
+  lastTime = now;
+  if (dt > 0.05) { dt = 0.05; }
+  update(dt);
+  draw();
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

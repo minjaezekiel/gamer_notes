@@ -1,0 +1,297 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tile Collision, One Axis at a Time</title>
+<meta name="description" content="Why solid walls need two separate moves per frame. Step through X-then-Y resolution and watch the all-at-once version fail at a corner.">
+<link rel="stylesheet" href="../css/notes.css">
+<link rel="stylesheet" href="../css/code.css">
+</head>
+<body>
+<div class="wrap">
+
+  <p class="breadcrumb"><a href="index.html">&larr; All visualizers</a></p>
+
+  <header class="lesson-head">
+    <p class="kicker">Concept 14 &middot; Works for JavaScript, Python and C++</p>
+    <h1>Tile Collision, One Axis at a Time</h1>
+    <p class="meta">The two-step move that makes walls solid. Used in: web I-L5 and I-L12 &middot; python I-L6 and I-L9 &middot; c++ I-L8</p>
+  </header>
+
+  <p class="lede">Moving a box against a wall looks like one job. It is <strong>two</strong>: move
+  sideways and fix sideways, then move vertically and fix vertically. Programmers who do it in one go
+  get a player who sticks to walls, slides up them, or teleports through corners &mdash; and the bug is
+  almost impossible to read from the code.</p>
+
+  <div class="look-for">
+    <strong>What to look for</strong>
+    The dashed box is where the player <em>tried</em> to go. The solid box is where they ended up.
+    Step one frame at a time and watch the two separate corrections: the <strong>red</strong> fix is
+    horizontal, the <strong>orange</strong> fix is vertical. Now switch on &ldquo;move both axes at
+    once&rdquo; and walk diagonally into a corner. The player climbs the wall. Nothing in that code
+    looks wrong, which is exactly why this is worth seeing.
+  </div>
+
+  <div id="tileDemo"></div>
+
+</div>
+
+<script src="../js/page.js"></script>
+<script src="../js/anim.js"></script>
+<script src="../js/codeblock.js"></script>
+<script>
+/* ---------------------------------------------------------------------------
+   Axis-separated tile collision, stepped.
+
+   Every student writes the all-at-once version first. It is shorter, it reads
+   better, and it is wrong in a way that only shows up diagonally against a
+   corner. The toggle here lets a class watch both versions fail and succeed on
+   the same corner within ten seconds of each other.
+   ------------------------------------------------------------------------ */
+(function () {
+  var TILE = 44;
+  var MAP = [
+    '############',
+    '#..........#',
+    '#..###.....#',
+    '#....#..##.#',
+    '#....#.....#',
+    '#.##.......#',
+    '#.....###..#',
+    '############'
+  ];
+  var COLS = MAP[0].length, ROWS = MAP.length;
+  var MAP_X = 30, MAP_Y = 86;
+  var PW = 30, PH = 30;                 // the player box
+  var bothToggle, speedSlider;
+
+  function solid(col, row) {
+    if (col < 0 || row < 0 || col >= COLS || row >= ROWS) { return true; }
+    return MAP[row].charAt(col) === '#';
+  }
+
+  /* Which tiles does this box touch? Only those need testing - there is no
+     reason to loop over a whole level. */
+  function tileRange(x, y, w, h) {
+    return {
+      c0: Math.floor(x / TILE),        c1: Math.floor((x + w - 0.001) / TILE),
+      r0: Math.floor(y / TILE),        r1: Math.floor((y + h - 0.001) / TILE)
+    };
+  }
+
+  function hitsWall(x, y) {
+    var r = tileRange(x, y, PW, PH);
+    for (var row = r.r0; row <= r.r1; row++) {
+      for (var col = r.c0; col <= r.c1; col++) {
+        if (solid(col, row)) { return { col: col, row: row }; }
+      }
+    }
+    return null;
+  }
+
+  var sk = Anim.sketch({
+    mount: '#tileDemo',
+    width: 900, height: 470,
+    fps: 12,                        // slow: every frame here is worth reading
+    controls: ['play', 'step', 'reset', 'speed'],
+
+    state: function () {
+      return {
+        x: TILE * 1.4, y: TILE * 1.3,
+        vx: 1, vy: 1,                 // direction only; speed comes from the slider
+        tryX: 0, tryY: 0,             // where the player wanted to be
+        fixedX: false, fixedY: false,
+        testedX: null, testedY: null
+      };
+    },
+
+    update: function (s, dt) {
+      var sp = speedSlider ? speedSlider.value : 150;
+      var dx = s.vx * sp * dt;
+      var dy = s.vy * sp * dt;
+      s.tryX = s.x + dx;
+      s.tryY = s.y + dy;
+      s.fixedX = false; s.fixedY = false;
+      s.testedX = null; s.testedY = null;
+
+      if (bothToggle && bothToggle.checked) {
+        /* ---- THE BUG: one move, one test ----
+           If the single combined move lands in a wall, we have no idea WHICH
+           direction caused it, so there is nothing sensible to undo. Undoing
+           both is the usual guess, and that is what makes the player stick. */
+        var hit = hitsWall(s.tryX, s.tryY);
+        if (hit) {
+          s.testedX = hit;
+          /* the usual guess: push out along whichever axis overlaps least.
+             Against a corner, "least" flips between frames and the player
+             crawls up the wall. */
+          var cx = hit.col * TILE, cy = hit.row * TILE;
+          var overlapX = dx > 0 ? (s.tryX + PW) - cx : (cx + TILE) - s.tryX;
+          var overlapY = dy > 0 ? (s.tryY + PH) - cy : (cy + TILE) - s.tryY;
+          if (overlapX < overlapY) {
+            s.x = dx > 0 ? cx - PW : cx + TILE;
+            s.y = s.tryY;
+            s.fixedX = true;
+          } else {
+            s.y = dy > 0 ? cy - PH : cy + TILE;
+            s.x = s.tryX;
+            s.fixedY = true;
+          }
+        } else {
+          s.x = s.tryX; s.y = s.tryY;
+        }
+      } else {
+        /* ---- THE FIX: two moves, two tests ----
+           Step 1: move on X only. If that lands in a wall, we KNOW it was the
+           horizontal movement, so we put the player flush against that tile's
+           edge and stop their horizontal speed. */
+        s.x = s.x + dx;
+        var hx = hitsWall(s.x, s.y);
+        if (hx) {
+          s.testedX = hx;
+          s.x = dx > 0 ? hx.col * TILE - PW : hx.col * TILE + TILE;
+          s.vx = -s.vx;              // in a real game: vx = 0
+          s.fixedX = true;
+        }
+
+        /* Step 2: now move on Y only, from the already-corrected X. Same
+           reasoning, and this is the test that tells a platformer it landed. */
+        s.y = s.y + dy;
+        var hy = hitsWall(s.x, s.y);
+        if (hy) {
+          s.testedY = hy;
+          s.y = dy > 0 ? hy.row * TILE - PH : hy.row * TILE + TILE;
+          s.vy = -s.vy;              // in a real game: vy = 0, and onGround = true
+          s.fixedY = true;
+        }
+      }
+
+      /* bounce off the outer frame too, so it never wanders out of the map */
+      if (s.x < TILE) { s.x = TILE; s.vx = Math.abs(s.vx); }
+      if (s.y < TILE) { s.y = TILE; s.vy = Math.abs(s.vy); }
+    },
+
+    draw: function (s, g, api) {
+      var T = g.color;
+      g.clear();
+
+      g.text('THE LEVEL — a grid of characters', MAP_X, MAP_Y - 36,
+        { size: 14, bold: true, color: T.muted });
+      g.text("'#' is solid  ·  '.' is empty  ·  tile = " + TILE + ' px',
+        MAP_X, MAP_Y - 16, { size: 12, color: T.muted, mono: true });
+
+      /* the map */
+      for (var row = 0; row < ROWS; row++) {
+        for (var col = 0; col < COLS; col++) {
+          var tx = MAP_X + col * TILE, ty = MAP_Y + row * TILE;
+          if (solid(col, row)) {
+            g.rect(tx, ty, TILE, TILE, T.grid);
+            g.strokeRect(tx, ty, TILE, TILE, T.panel, 1);
+          } else {
+            g.strokeRect(tx, ty, TILE, TILE, T.panel, 1);
+          }
+        }
+      }
+
+      /* the tiles that were actually tested this frame - usually only four */
+      var r = tileRange(s.x, s.y, PW, PH);
+      for (var rr = r.r0; rr <= r.r1; rr++) {
+        for (var cc = r.c0; cc <= r.c1; cc++) {
+          g.strokeRect(MAP_X + cc * TILE + 1, MAP_Y + rr * TILE + 1,
+                       TILE - 2, TILE - 2, T.warn, 1.5);
+        }
+      }
+
+      /* where the player TRIED to go */
+      g.dashed(MAP_X + s.tryX, MAP_Y + s.tryY, MAP_X + s.tryX + PW, MAP_Y + s.tryY, T.muted, 1.5);
+      g.dashed(MAP_X + s.tryX + PW, MAP_Y + s.tryY, MAP_X + s.tryX + PW, MAP_Y + s.tryY + PH, T.muted, 1.5);
+      g.dashed(MAP_X + s.tryX + PW, MAP_Y + s.tryY + PH, MAP_X + s.tryX, MAP_Y + s.tryY + PH, T.muted, 1.5);
+      g.dashed(MAP_X + s.tryX, MAP_Y + s.tryY + PH, MAP_X + s.tryX, MAP_Y + s.tryY, T.muted, 1.5);
+
+      /* where they ended up */
+      g.rect(MAP_X + s.x, MAP_Y + s.y, PW, PH, T.accent);
+
+      /* the corrections, each in its own colour */
+      if (s.fixedX) {
+        g.arrow(MAP_X + s.tryX + PW / 2, MAP_Y + s.y + PH / 2,
+                MAP_X + s.x + PW / 2, MAP_Y + s.y + PH / 2, T.bad, 3);
+      }
+      if (s.fixedY) {
+        g.arrow(MAP_X + s.x + PW / 2, MAP_Y + s.tryY + PH / 2,
+                MAP_X + s.x + PW / 2, MAP_Y + s.y + PH / 2, T.accent2, 3);
+      }
+
+      /* ---- the right-hand panel: the algorithm, with this frame's state ---- */
+      var PX = MAP_X + COLS * TILE + 26;
+      var both = bothToggle && bothToggle.checked;
+      g.text(both ? 'ONE MOVE, ONE TEST (broken)' : 'TWO MOVES, TWO TESTS (correct)',
+        PX, MAP_Y - 36, { size: 14, bold: true, color: both ? T.bad : T.good });
+
+      var steps = both
+        ? ['1. x += dx  AND  y += dy', '2. does the box hit a wall?',
+           '3. if so… push out of which side?', '   (there is no right answer here)']
+        : ['1. x += dx', '2. hit a wall? → flush against it, vx = 0',
+           '3. y += dy', '4. hit a wall? → flush against it, vy = 0'];
+      var sy = MAP_Y - 6;
+      steps.forEach(function (line, i) {
+        var active = both
+          ? (i === 2 && (s.fixedX || s.fixedY))
+          : ((i === 1 && s.fixedX) || (i === 3 && s.fixedY));
+        if (active) { g.rect(PX - 6, sy + i * 26 - 15, 330, 24, T.panel); }
+        g.text(line, PX, sy + i * 26,
+          { size: 13, mono: true, bold: active, color: active ? T.ink : T.muted });
+      });
+
+      var iy = MAP_Y + 130;
+      g.text('this frame', PX, iy, { size: 13, bold: true, color: T.muted });
+      g.text('wanted:  x ' + s.tryX.toFixed(1) + '   y ' + s.tryY.toFixed(1),
+        PX, iy + 22, { size: 12.5, mono: true, color: T.ink });
+      g.text('got:     x ' + s.x.toFixed(1) + '   y ' + s.y.toFixed(1),
+        PX, iy + 42, { size: 12.5, mono: true, color: T.ink });
+      g.text('x fixed: ' + (s.fixedX ? 'YES' : 'no'),
+        PX, iy + 66, { size: 12.5, mono: true, bold: s.fixedX, color: s.fixedX ? T.bad : T.muted });
+      g.text('y fixed: ' + (s.fixedY ? 'YES' : 'no'),
+        PX, iy + 86, { size: 12.5, mono: true, bold: s.fixedY, color: s.fixedY ? T.accent2 : T.muted });
+
+      g.text('tiles tested: ' + ((r.c1 - r.c0 + 1) * (r.r1 - r.r0 + 1)) + ' of ' +
+             (COLS * ROWS), PX, iy + 118, { size: 12.5, mono: true, color: T.warn });
+      g.text('(a box touches at most 4 tiles —', PX, iy + 138, { size: 11.5, color: T.muted });
+      g.text(' never loop over the whole level)', PX, iy + 154, { size: 11.5, color: T.muted });
+
+      g.text('col = floor(x / TILE)', PX, iy + 190, { size: 13, mono: true, bold: true, color: T.accent });
+      g.text('row = floor(y / TILE)', PX, iy + 210, { size: 13, mono: true, bold: true, color: T.accent });
+
+      if (both && (s.fixedX || s.fixedY)) {
+        api.say('The combined move hit a wall. The code had to <strong>guess</strong> which ' +
+                'direction to undo, because the information was already lost. Watch a corner: ' +
+                'the guess flips from frame to frame and the player climbs.');
+      } else if (s.fixedX && s.fixedY) {
+        api.say('<strong>Both</strong> corrections ran this frame — a corner. Each one knew exactly ' +
+                'which direction it was undoing, so neither had to guess.');
+      } else if (s.fixedX) {
+        api.say('The horizontal move hit a wall, so the box was placed <strong>flush</strong> ' +
+                'against that tile and <code>vx</code> was cancelled. The vertical move still ran ' +
+                'normally — which is how a player slides along a wall instead of stopping dead.');
+      } else if (s.fixedY) {
+        api.say('The vertical move hit a wall, so the box was placed flush and <code>vy</code> ' +
+                'cancelled. In a platformer, <em>this exact test</em> is how the game knows the ' +
+                'player is standing on the ground.');
+      } else {
+        api.say('Nothing was in the way, so both moves went through untouched. Most frames look ' +
+                'like this.');
+      }
+    },
+
+    onReset: function (s, api) {
+      api.say('Press <strong>Step 1 frame</strong> until the box reaches a wall, and watch which ' +
+              'of the two corrections fires.');
+    }
+  });
+
+  speedSlider = sk.slider('Player speed (px/s)', 40, 600, 150, 10);
+  bothToggle  = sk.toggle('move both axes at once (the bug)', false);
+}());
+</script>
+</body>
+</html>

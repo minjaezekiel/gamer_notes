@@ -1,0 +1,254 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Enemies That Seem To Think</title>
+<meta name="description" content="Patrol, chase, flee. Drag the player around and watch three if-statements turn into something that looks like a decision.">
+<link rel="stylesheet" href="../css/notes.css">
+<link rel="stylesheet" href="../css/code.css">
+</head>
+<body>
+<div class="wrap">
+
+  <p class="breadcrumb"><a href="index.html">&larr; All visualizers</a></p>
+
+  <header class="lesson-head">
+    <p class="kicker">Concept 17 &middot; Works for JavaScript, Python and C++</p>
+    <h1>Enemies That Seem To Think</h1>
+    <p class="meta">A state machine with legs. Used in: web I-L10 &middot; python I-L10 &middot; c++ I-L11</p>
+  </header>
+
+  <p class="lede">Game enemies are not intelligent and do not need to be. A guard that walks a route,
+  notices you, runs at you, and backs off when hurt will be described by players as
+  &ldquo;smart&rdquo; &mdash; and it is three states and two numbers. The illusion comes from the
+  <em>switching</em>, not from the thinking.</p>
+
+  <div class="look-for">
+    <strong>What to look for</strong>
+    <strong>Drag the blue player.</strong> Cross the dashed circle and watch the state box change, not
+    the enemy's code. Then notice the <em>second</em>, larger circle: once the guard has seen you it
+    keeps chasing until you are much further away than the distance that triggered it. Try shrinking
+    that gap to zero and walk along the edge &mdash; the guard flickers between patrol and chase
+    several times a second. That flicker has a name, and fixing it is what the gap is for.
+  </div>
+
+  <div id="aiDemo"></div>
+
+</div>
+
+<script src="../js/page.js"></script>
+<script src="../js/anim.js"></script>
+<script src="../js/codeblock.js"></script>
+<script>
+/* ---------------------------------------------------------------------------
+   Patrol / chase / flee as an explicit state machine.
+
+   The thing this visualizer exists to teach is HYSTERESIS - two different
+   thresholds for entering and leaving a state. Without it, an enemy standing at
+   exactly the edge of its vision changes its mind every frame, which looks
+   broken and is the single most common bug in a student's first AI.
+
+   The second thing is that the state machine is not about the enemy. It is
+   about making illegal combinations unrepresentable: a guard cannot be chasing
+   and fleeing at once, because `state` holds one value.
+   ------------------------------------------------------------------------ */
+(function () {
+  var ARENA_X = 24, ARENA_Y = 80, ARENA_W = 540, ARENA_H = 330;
+  var PANEL_X = 590;
+  var PATROL_A = ARENA_X + 90, PATROL_B = ARENA_X + 430;   // the route
+  var sightSlider, stickSlider, hpSlider, speedSlider;
+
+  var STATES = [
+    { id: 'patrol', label: 'PATROL', why: 'walk the route, look around' },
+    { id: 'chase',  label: 'CHASE',  why: 'move towards the player' },
+    { id: 'flee',   label: 'FLEE',   why: 'move away, hurt and losing' }
+  ];
+
+  var sk = Anim.sketch({
+    mount: '#aiDemo',
+    width: 900, height: 450,
+    fps: 30,
+    controls: ['play', 'step', 'reset', 'speed'],
+
+    state: function () {
+      return {
+        x: PATROL_A, y: ARENA_Y + 250,
+        dir: 1,
+        mode: 'patrol',
+        lastSwitch: 0,
+        switches: 0,
+        dist: 0
+      };
+    },
+
+    update: function (s, dt, api) {
+      var SIGHT = sightSlider ? sightSlider.value : 150;
+      var STICK = stickSlider ? stickSlider.value : 60;   // the hysteresis gap
+      var HP = hpSlider ? hpSlider.value : 100;
+      var SPEED = speedSlider ? speedSlider.value : 110;
+      var p = api.handle('player', ARENA_X + 300, ARENA_Y + 120, { hidden: true });
+
+      s.dist = Math.hypot(p.x - s.x, p.y - s.y);
+      var before = s.mode;
+
+      /* ================= DECIDE =================
+         Exactly one state is active, and each state names the conditions that
+         take it somewhere else. Nothing else in the program may set s.mode. */
+      if (HP < 30 && s.dist < SIGHT + STICK) {
+        s.mode = 'flee';
+      } else if (s.mode === 'patrol') {
+        /* entering a chase uses the SMALL radius */
+        if (s.dist < SIGHT) { s.mode = 'chase'; }
+      } else if (s.mode === 'chase') {
+        /* leaving a chase uses the BIG radius. Two different numbers for the
+           same boundary is the whole trick. */
+        if (s.dist > SIGHT + STICK) { s.mode = 'patrol'; }
+      } else if (s.mode === 'flee') {
+        if (HP >= 30) { s.mode = 'patrol'; }
+      }
+      if (s.mode !== before) { s.switches += 1; s.lastSwitch = api.frame; }
+
+      /* ================= ACT =================
+         One branch per state. Each is a couple of lines, and none of them knows
+         what the others do. */
+      if (s.mode === 'patrol') {
+        s.x = s.x + s.dir * SPEED * 0.55 * dt;
+        if (s.x > PATROL_B) { s.x = PATROL_B; s.dir = -1; }
+        if (s.x < PATROL_A) { s.x = PATROL_A; s.dir = 1; }
+        /* drift back to the route's height, so a finished chase comes home */
+        s.y = s.y + (ARENA_Y + 250 - s.y) * Math.min(1, 2 * dt);
+      } else if (s.mode === 'chase') {
+        var dx = p.x - s.x, dy = p.y - s.y, len = Math.hypot(dx, dy);
+        if (len > 1) {
+          s.x = s.x + (dx / len) * SPEED * dt;
+          s.y = s.y + (dy / len) * SPEED * dt;
+        }
+      } else {
+        var fx = s.x - p.x, fy = s.y - p.y, flen = Math.hypot(fx, fy);
+        if (flen > 1) {
+          s.x = s.x + (fx / flen) * SPEED * 1.25 * dt;
+          s.y = s.y + (fy / flen) * SPEED * 1.25 * dt;
+        }
+      }
+
+      s.x = Anim.util.clamp(s.x, ARENA_X + 14, ARENA_X + ARENA_W - 14);
+      s.y = Anim.util.clamp(s.y, ARENA_Y + 14, ARENA_Y + ARENA_H - 14);
+    },
+
+    draw: function (s, g, api) {
+      var T = g.color;
+      var SIGHT = sightSlider ? sightSlider.value : 150;
+      var STICK = stickSlider ? stickSlider.value : 60;
+      var HP = hpSlider ? hpSlider.value : 100;
+      g.clear();
+
+      g.rect(ARENA_X, ARENA_Y, ARENA_W, ARENA_H, T.panel);
+      g.strokeRect(ARENA_X, ARENA_Y, ARENA_W, ARENA_H, T.grid, 1);
+      g.text('DRAG THE BLUE PLAYER', ARENA_X, ARENA_Y - 38,
+        { size: 14, bold: true, color: T.muted });
+      g.text('the guard reacts; its code never changes', ARENA_X, ARENA_Y - 18,
+        { size: 12, color: T.muted });
+
+      /* the patrol route */
+      g.dashed(PATROL_A, ARENA_Y + 250, PATROL_B, ARENA_Y + 250, T.grid, 2);
+      g.circle(PATROL_A, ARENA_Y + 250, 4, T.grid);
+      g.circle(PATROL_B, ARENA_Y + 250, 4, T.grid);
+      g.text('patrol route', PATROL_A, ARENA_Y + 272, { size: 11, color: T.muted });
+
+      /* the two radii: this picture IS the hysteresis lesson */
+      var modeColour = s.mode === 'chase' ? T.bad : (s.mode === 'flee' ? T.warn : T.good);
+      g.ring(s.x, s.y, SIGHT, T.accent2, 1.5);
+      g.ring(s.x, s.y, SIGHT + STICK, T.muted, 1);
+      g.text('notices you here', s.x + SIGHT * 0.7, s.y - SIGHT * 0.72,
+        { size: 11, color: T.accent2 });
+      g.text('gives up out here', s.x + (SIGHT + STICK) * 0.7, s.y - (SIGHT + STICK) * 0.72 - 2,
+        { size: 11, color: T.muted });
+
+      /* the guard */
+      g.circle(s.x, s.y, 14, modeColour);
+      g.badge(s.mode.toUpperCase(), s.x, s.y - 22,
+        { align: 'center', bold: true, color: modeColour, border: modeColour });
+
+      /* a health bar, because the flee rule reads from it */
+      g.rect(s.x - 20, s.y + 22, 40, 7, T.grid);
+      g.rect(s.x - 20, s.y + 22, 40 * (HP / 100), 7, HP < 30 ? T.bad : T.good);
+
+      /* the player, draggable */
+      var p = api.handle('player', ARENA_X + 300, ARENA_Y + 120,
+        { label: 'player', color: T.accent, r: 12 });
+
+      /* the line between them, with the number that every rule tests */
+      g.dashed(s.x, s.y, p.x, p.y, T.ink, 1);
+      g.badge(Math.round(s.dist) + ' px', (s.x + p.x) / 2, (s.y + p.y) / 2,
+        { align: 'center', bold: true });
+
+      /* ================= the state machine, drawn ================= */
+      g.text('ONE VALUE, THREE POSSIBILITIES', PANEL_X, ARENA_Y - 38,
+        { size: 14, bold: true, color: T.muted });
+      for (var i = 0; i < STATES.length; i++) {
+        var by = ARENA_Y - 10 + i * 62;
+        var on = STATES[i].id === s.mode;
+        var col = STATES[i].id === 'chase' ? T.bad
+                : (STATES[i].id === 'flee' ? T.warn : T.good);
+        g.rect(PANEL_X, by, 280, 50, on ? col : T.panel);
+        g.strokeRect(PANEL_X, by, 280, 50, on ? col : T.grid, on ? 2 : 1);
+        g.text(STATES[i].label, PANEL_X + 12, by + 22,
+          { size: 14, bold: true, color: on ? T.bg : T.muted });
+        g.text(STATES[i].why, PANEL_X + 12, by + 40,
+          { size: 11.5, color: on ? T.bg : T.muted });
+      }
+
+      var cy = ARENA_Y + 190;
+      g.text('THE RULES, IN ORDER', PANEL_X, cy, { size: 13, bold: true, color: T.muted });
+      var rules = [
+        'hp < 30 and near     → flee',
+        'patrol: dist < ' + SIGHT + '      → chase',
+        'chase:  dist > ' + (SIGHT + STICK) + '      → patrol',
+        'flee:   hp recovered → patrol'
+      ];
+      for (var r = 0; r < rules.length; r++) {
+        g.text(rules[r], PANEL_X, cy + 22 + r * 19,
+          { size: 12, mono: true, color: T.ink });
+      }
+
+      var sy = cy + 118;
+      g.text('state changes so far: ' + s.switches, PANEL_X, sy,
+        { size: 13, bold: true, mono: true,
+          color: s.switches > 12 ? T.bad : T.ink });
+      g.text('the gap between the two circles', PANEL_X, sy + 22, { size: 11.5, color: T.muted });
+      g.text('is ' + STICK + ' px. Set it to 0 and walk', PANEL_X, sy + 38,
+        { size: 11.5, color: T.muted });
+      g.text('the edge: the counter runs away.', PANEL_X, sy + 54, { size: 11.5, color: T.muted });
+
+      if (STICK === 0 && api.frame - s.lastSwitch < 3 && s.switches > 4) {
+        api.say('The guard is <strong>flickering</strong>. With one threshold, a player standing ' +
+                'exactly on the boundary pushes it in and out of chase every few frames. Give the ' +
+                'two directions different numbers and the flicker is gone.');
+      } else if (s.mode === 'chase') {
+        api.say('<strong>CHASE.</strong> The guard runs the subtract–normalise–scale recipe towards ' +
+                'the player. It will keep going until the distance passes <strong>' +
+                (SIGHT + STICK) + ' px</strong> — not ' + SIGHT + '.');
+      } else if (s.mode === 'flee') {
+        api.say('<strong>FLEE.</strong> Identical code to chase with one sign flipped. Most ' +
+                '&ldquo;different&rdquo; behaviours are this small a change.');
+      } else {
+        api.say('<strong>PATROL.</strong> The guard is walking its route and testing one distance ' +
+                'per frame. It is currently ' + Math.round(s.dist) + ' px away and needs to be ' +
+                'under ' + SIGHT + ' to notice you.');
+      }
+    },
+
+    onReset: function (s, api) {
+      api.say('Drag the player across the dashed circle and watch the state box, not the guard.');
+    }
+  });
+
+  sightSlider = sk.slider('Vision radius (px)', 40, 300, 150, 10);
+  stickSlider = sk.slider('Give-up gap (px)', 0, 200, 60, 5);
+  hpSlider    = sk.slider('Guard health', 0, 100, 100, 5);
+  speedSlider = sk.slider('Guard speed (px/s)', 30, 300, 110, 10);
+}());
+</script>
+</body>
+</html>

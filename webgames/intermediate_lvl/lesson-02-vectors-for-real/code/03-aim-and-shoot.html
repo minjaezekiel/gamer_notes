@@ -1,0 +1,275 @@
+<!doctype html>
+<!-- ===========================================================================
+     03-aim-and-shoot.html — a ship that goes, and shoots, in ANY direction.
+
+     WHAT THIS DEMONSTRATES
+     * an angle is a single number that changes a little every frame
+     * Vec2.fromAngle(angle) turns that number into a direction
+     * bullets leave along the nose: pos + nose*18, vel = nose*SPEED
+     * ctx.save / translate / rotate / restore to draw something turned
+
+     HOW TO RUN IT
+     Double-click. LEFT and RIGHT turn, UP thrusts, SPACE fires.
+
+     WHAT TO CHANGE FIRST
+     Change BULLET_SPEED to 60 and fly forwards fast: you will catch up with your
+     own bullets. Then set it back and try firing while turning quickly - the
+     bullets fan out, because each one remembers the direction it was born with.
+
+     A Vec2 is pasted in below so this file runs by double-clicking. In your own
+     project, import it from vec2.js instead.
+     ======================================================================== -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Aim and shoot</title>
+<style>
+  body { background: #11151c; color: #e7ecf3; font-family: system-ui, sans-serif;
+         display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 18px; }
+  canvas { background: #070a0f; border: 2px solid #2b3240; border-radius: 6px; }
+  p { max-width: 580px; font-size: 15px; line-height: 1.5; color: #a9b4c4; }
+  b { color: #ffd43b; }
+</style>
+</head>
+<body>
+<h1>Any direction at all</h1>
+<canvas id="game" width="640" height="440"></canvas>
+<p><b>&larr; &rarr;</b> turn &middot; <b>&uarr;</b> thrust &middot; <b>Space</b> fire &middot;
+   <b>R</b> new rocks. Nothing here moves along x or y; everything moves along a
+   direction worked out from one angle.</p>
+
+<script>
+/* ---------------------------------------------------------------------------
+   The same Vec2 as vec2.js, with the methods this file uses.
+   ------------------------------------------------------------------------ */
+class Vec2 {
+  constructor(x, y) { this.x = x; this.y = y; }
+  add(o)    { return new Vec2(this.x + o.x, this.y + o.y); }
+  sub(o)    { return new Vec2(this.x - o.x, this.y - o.y); }
+  scale(k)  { return new Vec2(this.x * k, this.y * k); }
+  length()  { return Math.hypot(this.x, this.y); }
+  lengthSquared() { return this.x * this.x + this.y * this.y; }
+  normalise() {
+    const len = this.length();
+    if (len === 0) { return new Vec2(0, 0); }
+    return new Vec2(this.x / len, this.y / len);
+  }
+  static fromAngle(r) { return new Vec2(Math.cos(r), Math.sin(r)); }
+}
+
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+
+const TURN_SPEED = 3.4;          // radians per second
+const THRUST = 230;              // pixels per second while UP is held
+const BULLET_SPEED = 420;
+const BULLET_LIFE = 1.4;         // seconds
+const FIRE_GAP = 0.16;           // seconds between shots
+const ROCK_COUNT = 7;
+
+const ship = {
+  pos: new Vec2(320, 220),
+  vel: new Vec2(0, 0),
+  angle: -Math.PI / 2            // -90 degrees, i.e. pointing UP.
+                                 // Angle 0 points RIGHT, so "up" is a quarter
+                                 // turn backwards. This catches everybody once.
+};
+let bullets = [];
+let rocks = [];
+let fireCooldown = 0;
+let score = 0;
+const keys = {};
+
+document.addEventListener("keydown", function (e) {
+  keys[e.key] = true;
+  if (e.key.startsWith("Arrow") || e.key === " ") { e.preventDefault(); }
+  if (e.key === "r" || e.key === "R") { makeRocks(); }
+});
+document.addEventListener("keyup", function (e) { keys[e.key] = false; });
+
+function makeRocks() {
+  rocks = [];
+  for (let i = 0; i < ROCK_COUNT; i++) {
+    // A random ANGLE plus a random speed is how you get a random direction.
+    // Picking random x and y speeds instead clusters them along the diagonals.
+    const heading = Math.random() * Math.PI * 2;
+    rocks.push({
+      pos: new Vec2(Math.random() * canvas.width, Math.random() * canvas.height),
+      vel: Vec2.fromAngle(heading).scale(30 + Math.random() * 50),
+      r: 16 + Math.random() * 16,
+      spin: (Math.random() - 0.5) * 2,
+      turn: 0
+    });
+  }
+  score = 0;
+}
+
+/* Fly off one edge, arrive at the opposite one. */
+function wrap(p) {
+  if (p.x < 0) { p.x += canvas.width; }
+  if (p.x > canvas.width) { p.x -= canvas.width; }
+  if (p.y < 0) { p.y += canvas.height; }
+  if (p.y > canvas.height) { p.y -= canvas.height; }
+}
+
+function update(dt) {
+  /* ---- turning: an angle changes like any other number ---- */
+  if (keys["ArrowLeft"])  { ship.angle -= TURN_SPEED * dt; }
+  if (keys["ArrowRight"]) { ship.angle += TURN_SPEED * dt; }
+
+  /* ---- thrust: the direction comes from the angle ---- */
+  const nose = Vec2.fromAngle(ship.angle);        // a unit vector: pure direction
+  if (keys["ArrowUp"]) {
+    ship.vel = nose.scale(THRUST);                // set the velocity outright.
+                                                  // Lesson 3 makes this an
+                                                  // acceleration, which feels
+                                                  // completely different.
+  } else {
+    ship.vel = new Vec2(0, 0);
+  }
+  ship.pos = ship.pos.add(ship.vel.scale(dt));
+  wrap(ship.pos);
+
+  /* ---- firing ---- */
+  fireCooldown -= dt;
+  if (keys[" "] && fireCooldown <= 0) {
+    fireCooldown = FIRE_GAP;
+    bullets.push({
+      pos: ship.pos.add(nose.scale(18)),          // start at the nose, not the middle
+      vel: nose.scale(BULLET_SPEED),              // and fly the way the nose points
+      life: BULLET_LIFE
+    });
+  }
+
+  /* ---- bullets ---- */
+  for (let i = 0; i < bullets.length; i++) {
+    const b = bullets[i];
+    b.pos = b.pos.add(b.vel.scale(dt));
+    b.life -= dt;
+    wrap(b.pos);
+  }
+  // Remove backwards, so deleting one does not skip the next. (Beginner L5.)
+  for (let i = bullets.length - 1; i >= 0; i--) {
+    if (bullets[i].life <= 0) { bullets.splice(i, 1); }
+  }
+
+  /* ---- rocks ---- */
+  for (let i = 0; i < rocks.length; i++) {
+    const r = rocks[i];
+    r.pos = r.pos.add(r.vel.scale(dt));
+    r.turn += r.spin * dt;
+    wrap(r.pos);
+  }
+
+  /* ---- hits: a circle test, with no square root ---- */
+  for (let i = rocks.length - 1; i >= 0; i--) {
+    for (let j = bullets.length - 1; j >= 0; j--) {
+      const gap = rocks[i].pos.sub(bullets[j].pos);
+      if (gap.lengthSquared() < rocks[i].r * rocks[i].r) {
+        rocks.splice(i, 1);
+        bullets.splice(j, 1);
+        score += 10;
+        break;
+      }
+    }
+  }
+}
+
+function draw() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  /* rocks: each drawn rotated, which needs the save/restore pair */
+  ctx.strokeStyle = "#7a8698";
+  ctx.lineWidth = 2;
+  for (let i = 0; i < rocks.length; i++) {
+    const r = rocks[i];
+    ctx.save();
+    ctx.translate(r.pos.x, r.pos.y);
+    ctx.rotate(r.turn);
+    ctx.beginPath();
+    for (let k = 0; k < 7; k++) {
+      const a = (k / 7) * Math.PI * 2;
+      const wobble = r.r * (k % 2 === 0 ? 1 : 0.76);
+      const p = Vec2.fromAngle(a).scale(wobble);
+      if (k === 0) { ctx.moveTo(p.x, p.y); } else { ctx.lineTo(p.x, p.y); }
+    }
+    ctx.closePath();
+    ctx.stroke();
+    ctx.restore();          // ALWAYS. Without it every frame adds a rotation.
+  }
+
+  /* bullets */
+  ctx.fillStyle = "#ffd43b";
+  for (let i = 0; i < bullets.length; i++) {
+    ctx.beginPath();
+    ctx.arc(bullets[i].pos.x, bullets[i].pos.y, 3, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  /* the ship, drawn as if it were at the origin facing RIGHT */
+  ctx.save();
+  ctx.translate(ship.pos.x, ship.pos.y);
+  ctx.rotate(ship.angle);
+  ctx.strokeStyle = "#4dabf7";
+  ctx.lineWidth = 2.5;
+  ctx.beginPath();
+  ctx.moveTo(16, 0);          // the nose, along +x
+  ctx.lineTo(-11, 9);
+  ctx.lineTo(-6, 0);
+  ctx.lineTo(-11, -9);
+  ctx.closePath();
+  ctx.stroke();
+  if (keys["ArrowUp"]) {      // a flame, pointing backwards
+    ctx.strokeStyle = "#ff6b6b";
+    ctx.beginPath();
+    ctx.moveTo(-7, 0);
+    ctx.lineTo(-18 - Math.random() * 7, 0);
+    ctx.stroke();
+  }
+  ctx.restore();
+
+  /* the nose direction, drawn as an arrow, so the maths is visible */
+  const nose = Vec2.fromAngle(ship.angle);
+  const tip = ship.pos.add(nose.scale(70));
+  ctx.strokeStyle = "#2b8a3e";
+  ctx.setLineDash([5, 5]);
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(ship.pos.x, ship.pos.y);
+  ctx.lineTo(tip.x, tip.y);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  /* readouts */
+  ctx.font = "13px ui-monospace, Menlo, monospace";
+  ctx.fillStyle = "#8793a4";
+  const deg = ((ship.angle * 180 / Math.PI) % 360 + 360) % 360;
+  ctx.fillText("angle  " + deg.toFixed(0).padStart(3) + " deg", 12, 24);
+  ctx.fillText("nose   (" + nose.x.toFixed(2) + ", " + nose.y.toFixed(2) + ")", 12, 42);
+  ctx.fillText("length " + nose.length().toFixed(3) + "  <- always 1", 12, 60);
+  ctx.font = "bold 16px system-ui, sans-serif";
+  ctx.fillStyle = "#e7ecf3";
+  ctx.fillText("SCORE " + score, 12, 86);
+
+  if (rocks.length === 0) {
+    ctx.textAlign = "center";
+    ctx.font = "bold 22px system-ui, sans-serif";
+    ctx.fillText("all clear — press R", canvas.width / 2, canvas.height / 2);
+    ctx.textAlign = "left";
+  }
+}
+
+let lastTime = 0;
+function frame(now) {
+  let dt = (now - lastTime) / 1000;
+  lastTime = now;
+  if (dt > 0.05) { dt = 0.05; }
+  update(dt);
+  draw();
+  requestAnimationFrame(frame);
+}
+makeRocks();
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

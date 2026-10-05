@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tweens and Easing</title>
+<meta name="description" content="Five dots leave together and arrive together, and only one of them looks mechanical. Easing is reshaping time, not changing speed.">
+<link rel="stylesheet" href="../css/notes.css">
+<link rel="stylesheet" href="../css/code.css">
+</head>
+<body>
+<div class="wrap">
+
+  <p class="breadcrumb"><a href="index.html">&larr; All visualizers</a></p>
+
+  <header class="lesson-head">
+    <p class="kicker">Concept 16 &middot; Works for JavaScript, Python and C++</p>
+    <h1>Tweens and Easing</h1>
+    <p class="meta">Reshaping time. Used in: web I-L9 &middot; python I-L11 &middot; c++ I-L12</p>
+  </header>
+
+  <p class="lede">Nothing in the real world starts at full speed and stops dead. A door, a thrown ball,
+  a drawer, your own hand &mdash; all of them build up and settle down. Games copy that with
+  <strong>easing</strong>, and easing is a much smaller idea than it sounds: you take a number that
+  goes from 0 to 1, and you <strong>bend it</strong>.</p>
+
+  <div class="look-for">
+    <strong>What to look for</strong>
+    All five dots leave at the same instant and arrive at the same instant. The journey takes exactly
+    the same time for every one of them. Only the <em>shape</em> of the journey differs, and that shape
+    is the whole of what people mean by &ldquo;game feel&rdquo;. Watch the top one &mdash; the straight
+    line &mdash; and notice how machine-like it looks next to the others.
+  </div>
+
+  <div id="easeDemo"></div>
+
+</div>
+
+<script src="../js/page.js"></script>
+<script src="../js/anim.js"></script>
+<script src="../js/codeblock.js"></script>
+<script>
+/* ---------------------------------------------------------------------------
+   Easing curves, shown as curves AND as motion at the same time.
+
+   Students meet easing as a table of cryptic formulas. The formulas are not the
+   idea. The idea is: progress through an animation (0 to 1) and the amount of
+   the animation done (0 to 1) do not have to be the same number. Seeing the
+   graph and the dot move together is what joins those two halves.
+   ------------------------------------------------------------------------ */
+(function () {
+  /* Every one of these takes t in 0..1 and returns a bent version of t. */
+  var CURVES = [
+    { name: 'linear',       hint: 'robotic. useful for scrolling backgrounds.',
+      f: function (t) { return t; } },
+    { name: 'easeInQuad',   hint: 't × t — creeps, then rushes. good for falling.',
+      f: function (t) { return t * t; } },
+    { name: 'easeOutQuad',  hint: 'the one you want 80% of the time. UI, pickups, camera.',
+      f: function (t) { return 1 - (1 - t) * (1 - t); } },
+    { name: 'easeInOutQuad', hint: 'smooth at both ends. doors, cutscene cameras.',
+      f: function (t) { return t < 0.5 ? 2 * t * t : 1 - 2 * (1 - t) * (1 - t); } },
+    { name: 'easeOutBack',  hint: 'overshoots past 1 and settles back. menus, pop-ups.',
+      f: function (t) {
+        var c = 1.70158;
+        return 1 + (c + 1) * Math.pow(t - 1, 3) + c * Math.pow(t - 1, 2);
+      } }
+  ];
+
+  var GRAPH_X = 40, GRAPH_Y = 70, GRAPH_S = 230;   // the square graph
+  var TRACK_X = 330, TRACK_W = 530;                 // the lanes of moving dots
+  var durSlider, loopToggle;
+
+  var sk = Anim.sketch({
+    mount: '#easeDemo',
+    width: 900, height: 420,
+    fps: 30,
+    controls: ['play', 'step', 'reset', 'speed'],
+
+    state: function () { return { elapsed: 0, done: false }; },
+
+    update: function (s, dt) {
+      var dur = durSlider ? durSlider.value / 100 : 1.5;
+      s.elapsed = s.elapsed + dt;
+      if (s.elapsed >= dur) {
+        if (loopToggle && loopToggle.checked) { s.elapsed = 0; }
+        else { s.elapsed = dur; s.done = true; }
+      }
+    },
+
+    draw: function (s, g, api) {
+      var T = g.color;
+      var dur = durSlider ? durSlider.value / 100 : 1.5;
+      /* t is PROGRESS THROUGH TIME: 0 at the start, 1 at the end. Always. */
+      var t = Anim.util.clamp(s.elapsed / dur, 0, 1);
+      g.clear();
+
+      /* ================= the graph ================= */
+      g.text('TIME IN  →  PROGRESS OUT', GRAPH_X, GRAPH_Y - 34,
+        { size: 14, bold: true, color: T.muted });
+      g.rect(GRAPH_X, GRAPH_Y, GRAPH_S, GRAPH_S, T.panel);
+      /* the 0..1 box, so overshoot above the top line is obvious */
+      for (var k = 0; k <= 4; k++) {
+        var gy = GRAPH_Y + GRAPH_S - (k / 4) * GRAPH_S;
+        g.line(GRAPH_X, gy, GRAPH_X + GRAPH_S, gy, T.grid, 1);
+      }
+      g.strokeRect(GRAPH_X, GRAPH_Y, GRAPH_S, GRAPH_S, T.grid, 1.5);
+      g.text('0', GRAPH_X - 14, GRAPH_Y + GRAPH_S + 4, { size: 11, color: T.muted, mono: true });
+      g.text('1', GRAPH_X - 14, GRAPH_Y + 8, { size: 11, color: T.muted, mono: true });
+      g.text('t = 0', GRAPH_X - 6, GRAPH_Y + GRAPH_S + 20, { size: 11, color: T.muted, mono: true });
+      g.text('t = 1', GRAPH_X + GRAPH_S - 26, GRAPH_Y + GRAPH_S + 20,
+        { size: 11, color: T.muted, mono: true });
+
+      var COLOURS = [T.muted, T.warn, T.good, T.accent, T.accent2];
+      for (var c = 0; c < CURVES.length; c++) {
+        var prevX = null, prevY = null;
+        for (var i = 0; i <= 60; i++) {
+          var tt = i / 60;
+          var v = CURVES[c].f(tt);
+          var x = GRAPH_X + tt * GRAPH_S;
+          var y = GRAPH_Y + GRAPH_S - v * GRAPH_S;
+          if (prevX !== null) { g.line(prevX, prevY, x, y, COLOURS[c], 2); }
+          prevX = x; prevY = y;
+        }
+        /* the live dot sitting on each curve */
+        var cv = CURVES[c].f(t);
+        g.circle(GRAPH_X + t * GRAPH_S, GRAPH_Y + GRAPH_S - cv * GRAPH_S, 4.5, COLOURS[c]);
+      }
+      /* the vertical "now" line: the same t for everybody */
+      g.dashed(GRAPH_X + t * GRAPH_S, GRAPH_Y - 6, GRAPH_X + t * GRAPH_S,
+               GRAPH_Y + GRAPH_S + 6, T.ink, 1.5);
+      g.text('t = ' + t.toFixed(2), GRAPH_X + GRAPH_S / 2 - 24, GRAPH_Y + GRAPH_S + 40,
+        { size: 13, bold: true, mono: true, color: T.ink });
+
+      /* ================= the lanes ================= */
+      for (var j = 0; j < CURVES.length; j++) {
+        var ly = GRAPH_Y + 6 + j * 62;
+        var v2 = CURVES[j].f(t);
+        /* THE ONLY LINE THAT MOVES ANYTHING: lerp(start, end, eased t) */
+        var dotX = TRACK_X + 40 + v2 * (TRACK_W - 110);
+
+        g.line(TRACK_X + 40, ly + 18, TRACK_X + TRACK_W - 70, ly + 18, T.grid, 2);
+        g.circle(TRACK_X + 40, ly + 18, 3, T.grid);
+        g.circle(TRACK_X + TRACK_W - 70, ly + 18, 3, T.grid);
+        g.circle(dotX, ly + 18, 11, COLOURS[j]);
+
+        g.text(CURVES[j].name, TRACK_X + 40, ly + 2,
+          { size: 13, bold: true, mono: true, color: COLOURS[j] });
+        g.text(CURVES[j].hint, TRACK_X + 150, ly + 2, { size: 11.5, color: T.muted });
+        g.text(v2.toFixed(2), TRACK_X + TRACK_W - 56, ly + 23,
+          { size: 12, mono: true, color: T.muted });
+      }
+
+      /* ================= the formula ================= */
+      g.rect(GRAPH_X, 378, 820, 32, T.panel);
+      g.text('x  =  lerp(start, end, ease(t))        where   lerp(a, b, t) = a + (b − a) × t',
+        GRAPH_X + 12, 399, { size: 14, bold: true, mono: true, color: T.ink });
+
+      if (t === 0) {
+        api.say('Every dot is at the start. Press <strong>Step 1 frame</strong> a few times and ' +
+                'watch them spread out, even though they share one <code>t</code>.');
+      } else if (t >= 1) {
+        api.say('All five arrived at exactly the same moment, after ' + dur.toFixed(2) +
+                ' seconds. Easing changed <em>how</em> they travelled, never <em>how long</em> ' +
+                'they took.');
+      } else {
+        api.say('t = <strong>' + t.toFixed(2) + '</strong> for all five. ' +
+                '<code>easeOutQuad</code> is already ' +
+                Math.round(CURVES[2].f(t) * 100) + '% of the way there while ' +
+                '<code>easeInQuad</code> has only done ' +
+                Math.round(CURVES[1].f(t) * 100) + '%.');
+      }
+    },
+
+    onReset: function (s, api) {
+      api.say('Press <strong>Play</strong>. Then come back and step it frame by frame.');
+    }
+  });
+
+  durSlider  = sk.slider('Duration (hundredths of a second)', 30, 400, 150, 10);
+  loopToggle = sk.toggle('loop', true);
+}());
+</script>
+</body>
+</html>

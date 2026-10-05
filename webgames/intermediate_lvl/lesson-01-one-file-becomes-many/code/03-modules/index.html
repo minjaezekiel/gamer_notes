@@ -1,0 +1,76 @@
+<!doctype html>
+<!-- ===========================================================================
+     03-modules/index.html — the SAME Breakout again, as real ES modules.
+
+     WHAT THIS DEMONSTRATES
+     import / export. One script tag instead of six, the load order worked out
+     for you, and every name private to its own file unless it is exported.
+
+     HOW TO RUN IT  ****  READ THIS  ****
+     Double-clicking this file will NOT work, and that is not a bug in the code.
+     A browser treats every local file as a separate website, so one local file
+     may not `import` another. Start a server instead — it runs on your own
+     machine and needs no internet:
+
+         cd 03-modules
+         python3 -m http.server 8000
+
+     then open http://localhost:8000  (Ctrl+C in the terminal to stop it).
+
+     If you double-click anyway, the page tells you so rather than sitting there
+     looking broken. Open the browser console as well and read the real error:
+     learning to recognise that message saves hours later.
+
+     WHAT TO CHANGE FIRST
+     In game.js, delete `BALL_SPEED` from the import list at the top but keep
+     using it. The error you get names the exact line. Then try the same thing in
+     the 02-script-tags version, where it would have silently worked.
+     ======================================================================== -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Breakout — seven modules</title>
+<style>
+  body { background: #11151c; color: #e7ecf3; font-family: system-ui, sans-serif;
+         display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 20px; }
+  canvas { background: #0a0d12; border: 2px solid #2b3240; border-radius: 6px; }
+  p { max-width: 560px; font-size: 15px; line-height: 1.5; color: #a9b4c4; }
+  code { background: #1b2130; padding: 1px 5px; border-radius: 4px; }
+  #needs-server { max-width: 560px; background: #3b2a12; border: 2px solid #f08c00;
+                  border-radius: 8px; padding: 14px 18px; color: #ffd9a0; }
+  #needs-server h2 { margin: 0 0 6px; font-size: 17px; color: #ffd43b; }
+  pre { background: #0a0d12; padding: 10px 12px; border-radius: 6px; overflow-x: auto; }
+</style>
+</head>
+<body>
+<h1>Breakout, as modules</h1>
+
+<!-- This banner is plain old JavaScript, not a module, so it always runs. -->
+<div id="needs-server" hidden>
+  <h2>This page was opened from a file, so the modules could not load</h2>
+  <p>Your browser treats every local file as its own separate website, and one
+  website may not <code>import</code> another's code. Nothing is wrong with the
+  game. Serve the folder instead:</p>
+  <pre>cd 03-modules
+python3 -m http.server 8000</pre>
+  <p>Then open <code>http://localhost:8000</code>. That server runs on this
+  computer; no internet is involved.</p>
+</div>
+
+<canvas id="game" width="520" height="400"></canvas>
+<p>Arrow keys or A / D, <b>Space</b> to launch, <b>R</b> to restart. Same game as
+   <code>01-one-big-file.html</code>, same game as <code>02-script-tags/</code>.</p>
+
+<script>
+  /* A classic script: exempt from the import rule, so it runs either way and can
+     explain the situation. */
+  if (location.protocol === "file:") {
+    document.getElementById("needs-server").hidden = false;
+  }
+</script>
+
+<!-- ONE tag. The browser reads main.js, sees what it imports, reads those, and
+     works the load order out for itself. -->
+<script type="module" src="main.js"></script>
+</body>
+</html>

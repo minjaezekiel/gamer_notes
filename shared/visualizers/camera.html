@@ -1,0 +1,226 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The Camera: World Space vs Screen Space</title>
+<meta name="description" content="A camera does not move. It subtracts. Two views side by side show the same world in world coordinates and in screen coordinates.">
+<link rel="stylesheet" href="../css/notes.css">
+<link rel="stylesheet" href="../css/code.css">
+</head>
+<body>
+<div class="wrap">
+
+  <p class="breadcrumb"><a href="index.html">&larr; All visualizers</a></p>
+
+  <header class="lesson-head">
+    <p class="kicker">Concept 15 &middot; Works for JavaScript, Python and C++</p>
+    <h1>The Camera</h1>
+    <p class="meta">World space, screen space, and one subtraction. Used in: web I-L6 &middot; python I-L7 &middot; c++ I-L9</p>
+  </header>
+
+  <p class="lede">There is no camera. Nothing in your game moves a camera, because no such object
+  exists. What you actually have is <strong>one number you subtract from everything before you draw
+  it</strong>. Once that lands, scrolling worlds stop being mysterious.</p>
+
+  <div class="look-for">
+    <strong>What to look for</strong>
+    Two pictures of the <em>same moment</em>. On the left, the whole world, where the player really is.
+    On the right, what the player sees. The player is at world x = 1200 and screen x = 240
+    <em>at the same time</em>. Watch the dead zone: inside it the camera does not move at all, and the
+    player drifts across the screen. That is not laziness; a camera that reacts to every tiny step
+    makes people feel sick.
+  </div>
+
+  <div id="camDemo"></div>
+
+</div>
+
+<script src="../js/page.js"></script>
+<script src="../js/anim.js"></script>
+<script src="../js/codeblock.js"></script>
+<script>
+/* ---------------------------------------------------------------------------
+   World space vs screen space, shown simultaneously.
+
+   The single sentence this visualizer exists to deliver:
+       screenX = worldX - camera.x
+   Everything else on the canvas is there to make that line feel inevitable.
+   ------------------------------------------------------------------------ */
+(function () {
+  var WORLD_W = 2400, WORLD_H = 700;      // the whole level, in world units
+  var VIEW_W = 480, VIEW_H = 260;         // what fits on the "screen"
+
+  /* left panel: the whole world, shrunk */
+  var MAP_X = 24, MAP_Y = 92, MAP_W = 420;
+  var MAP_S = MAP_W / WORLD_W;            // world units -> map pixels
+  var MAP_H = WORLD_H * MAP_S;
+
+  /* right panel: the screen, nearly full size */
+  var SCR_X = 468, SCR_Y = 92, SCR_W = 408;
+  var SCR_S = SCR_W / VIEW_W;
+  var SCR_H = VIEW_H * SCR_S;
+
+  /* landmarks, so motion is visible. Pure decoration, world coordinates. */
+  var HILLS = [];
+  for (var i = 0; i < 16; i++) {
+    HILLS.push({ x: 90 + i * 150, h: 70 + ((i * 53) % 110), w: 60 + ((i * 37) % 50) });
+  }
+
+  var smoothSlider, deadSlider, clampToggle;
+
+  function cameraTarget(s) {
+    /* Where the camera WANTS to be: centred on the player. */
+    return s.px - VIEW_W / 2;
+  }
+
+  var sk = Anim.sketch({
+    mount: '#camDemo',
+    width: 900, height: 440,
+    fps: 30,
+    controls: ['play', 'step', 'reset', 'speed'],
+
+    state: function () {
+      return {
+        px: 300, pvx: 260,       // the player, in WORLD coordinates
+        camX: 300 - VIEW_W / 2,  // the camera, in WORLD coordinates
+        moved: 0                 // how far the camera moved this frame
+      };
+    },
+
+    update: function (s, dt) {
+      /* the player walks back and forth across the level */
+      s.px = s.px + s.pvx * dt;
+      if (s.px > WORLD_W - 60) { s.px = WORLD_W - 60; s.pvx = -s.pvx; }
+      if (s.px < 60)           { s.px = 60;           s.pvx = -s.pvx; }
+
+      var dead = deadSlider ? deadSlider.value : 120;
+      var smooth = smoothSlider ? smoothSlider.value / 100 : 0.12;
+      var before = s.camX;
+
+      /* THE DEAD ZONE. The camera only cares once the player is more than
+         `dead` pixels away from the centre of the screen. */
+      var wanted = cameraTarget(s);
+      var gap = wanted - s.camX;
+      if (Math.abs(gap) > dead / 2) {
+        /* move a FRACTION of the remaining distance each frame: a lerp. The
+           camera eases in instead of snapping, and never quite arrives. */
+        var over = gap > 0 ? gap - dead / 2 : gap + dead / 2;
+        s.camX = s.camX + over * smooth;
+      }
+
+      /* Keep the view inside the level, or the player sees empty space off
+         the end of the world. */
+      if (clampToggle && clampToggle.checked) {
+        s.camX = Anim.util.clamp(s.camX, 0, WORLD_W - VIEW_W);
+      }
+      s.moved = s.camX - before;
+    },
+
+    draw: function (s, g, api) {
+      var T = g.color;
+      g.clear();
+
+      /* ================= LEFT: the world as it really is ================= */
+      g.text('WORLD SPACE — where things actually are', MAP_X, MAP_Y - 36,
+        { size: 14, bold: true, color: T.muted });
+      g.text('the whole level: ' + WORLD_W + ' × ' + WORLD_H + ' units', MAP_X, MAP_Y - 16,
+        { size: 12, color: T.muted, mono: true });
+
+      g.rect(MAP_X, MAP_Y, MAP_W, MAP_H, T.panel);
+      HILLS.forEach(function (h) {
+        g.rect(MAP_X + (h.x - h.w / 2) * MAP_S, MAP_Y + (WORLD_H - 90 - h.h) * MAP_S,
+               h.w * MAP_S, h.h * MAP_S, T.grid);
+      });
+      g.rect(MAP_X, MAP_Y + (WORLD_H - 90) * MAP_S, MAP_W, 90 * MAP_S, T.grid);
+      g.strokeRect(MAP_X, MAP_Y, MAP_W, MAP_H, T.grid, 1);
+
+      /* the camera rectangle: a window onto the world, nothing more */
+      var camL = MAP_X + s.camX * MAP_S;
+      g.strokeRect(camL, MAP_Y + (WORLD_H - 90 - VIEW_H) * MAP_S,
+                   VIEW_W * MAP_S, VIEW_H * MAP_S, T.bad, 2.5);
+      g.text('camera', camL + 2, MAP_Y + (WORLD_H - 90 - VIEW_H) * MAP_S - 5,
+        { size: 11, bold: true, color: T.bad });
+
+      /* the player, in world coordinates */
+      var pmx = MAP_X + s.px * MAP_S;
+      var pmy = MAP_Y + (WORLD_H - 104) * MAP_S;
+      g.circle(pmx, pmy, 6, T.accent);
+
+      g.text('player world x = ' + Math.round(s.px), MAP_X, MAP_Y + MAP_H + 22,
+        { size: 13, bold: true, color: T.accent, mono: true });
+      g.text('camera     x = ' + Math.round(s.camX), MAP_X, MAP_Y + MAP_H + 42,
+        { size: 13, bold: true, color: T.bad, mono: true });
+
+      /* ================= RIGHT: what the player sees ================= */
+      g.text('SCREEN SPACE — what gets drawn', SCR_X, SCR_Y - 36,
+        { size: 14, bold: true, color: T.muted });
+      g.text('the window: ' + VIEW_W + ' × ' + VIEW_H + ' pixels', SCR_X, SCR_Y - 16,
+        { size: 12, color: T.muted, mono: true });
+
+      g.rect(SCR_X, SCR_Y, SCR_W, SCR_H, T.panel);
+      /* Clip, so nothing outside the view can be drawn. A real game does not
+         need this - things off screen are simply drawn off screen. */
+      g.ctx.save();
+      g.ctx.beginPath();
+      g.ctx.rect(SCR_X, SCR_Y, SCR_W, SCR_H);
+      g.ctx.clip();
+
+      HILLS.forEach(function (h) {
+        /* THE ONE LINE THIS PAGE IS ABOUT */
+        var screenX = h.x - s.camX;
+        g.rect(SCR_X + (screenX - h.w / 2) * SCR_S, SCR_Y + (VIEW_H - 46 - h.h * 0.5) * SCR_S,
+               h.w * SCR_S, h.h * 0.5 * SCR_S, T.grid);
+      });
+      g.rect(SCR_X, SCR_Y + (VIEW_H - 46) * SCR_S, SCR_W, 46 * SCR_S, T.grid);
+
+      var pScreenX = s.px - s.camX;                    /* and again, for the player */
+      g.circle(SCR_X + pScreenX * SCR_S, SCR_Y + (VIEW_H - 58) * SCR_S, 11, T.accent);
+
+      /* the dead zone, drawn where it lives: around the centre of the SCREEN */
+      var dead = deadSlider ? deadSlider.value : 120;
+      var midX = SCR_X + (VIEW_W / 2) * SCR_S;
+      g.dashed(midX - (dead / 2) * SCR_S, SCR_Y, midX - (dead / 2) * SCR_S, SCR_Y + SCR_H,
+               T.warn, 1.5);
+      g.dashed(midX + (dead / 2) * SCR_S, SCR_Y, midX + (dead / 2) * SCR_S, SCR_Y + SCR_H,
+               T.warn, 1.5);
+      g.ctx.restore();
+      g.strokeRect(SCR_X, SCR_Y, SCR_W, SCR_H, T.ink, 2);
+      g.text('dead zone', midX - 32, SCR_Y + 16, { size: 11, bold: true, color: T.warn });
+
+      g.text('player screen x = ' + Math.round(pScreenX), SCR_X, SCR_Y + SCR_H + 22,
+        { size: 13, bold: true, color: T.accent, mono: true });
+      g.text('camera moved this frame: ' + s.moved.toFixed(2) + ' px',
+        SCR_X, SCR_Y + SCR_H + 42, { size: 13, color: T.muted, mono: true });
+
+      /* ================= the arithmetic, spelled out ================= */
+      var fy = 410;
+      g.rect(MAP_X, fy - 26, 852, 36, T.panel);
+      g.text('screenX  =  worldX − camera.x        ' +
+             Math.round(s.px - s.camX) + '  =  ' + Math.round(s.px) + '  −  ' +
+             Math.round(s.camX),
+        MAP_X + 12, fy, { size: 15, bold: true, color: T.ink, mono: true });
+
+      if (Math.abs(s.moved) < 0.05) {
+        api.say('The camera did <strong>not move</strong> this frame — the player is still inside ' +
+                'the dead zone. Their screen position changed; the world did not scroll.');
+      } else {
+        api.say('The player left the dead zone, so the camera moved <strong>' +
+                s.moved.toFixed(2) + ' px</strong> — a fraction of the distance it still has to ' +
+                'cover, which is why it eases rather than snaps.');
+      }
+    },
+
+    onReset: function (s, api) {
+      api.say('Press <strong>Play</strong>, then drag the smoothing slider to 100 and watch the ' +
+              'difference between a camera that eases and one that snaps.');
+    }
+  });
+
+  smoothSlider = sk.slider('Camera smoothing (% of the gap per frame)', 2, 100, 12, 1);
+  deadSlider   = sk.slider('Dead zone width (px)', 0, 300, 120, 10);
+  clampToggle  = sk.toggle('clamp camera to the level edges', true);
+}());
+</script>
+</body>
+</html>

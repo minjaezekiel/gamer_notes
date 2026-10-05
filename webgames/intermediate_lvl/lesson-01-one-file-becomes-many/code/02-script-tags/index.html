@@ -1,0 +1,53 @@
+<!doctype html>
+<!-- ===========================================================================
+     02-script-tags/index.html — the SAME Breakout as 01, in seven files.
+
+     WHAT THIS DEMONSTRATES
+     Splitting a program with nothing but extra <script> tags. No server, no
+     build step, no tools. Double-click this file and it runs.
+
+     HOW TO RUN IT
+     Double-click index.html.
+
+     WHAT TO CHANGE FIRST
+     Swap the order of two script tags below and reload. The error you get tells
+     you something true about your design: the order is not a preference, it is
+     forced by who needs whom.
+
+     THE PRICE OF THIS APPROACH
+     Every one of these files shares the one global space, so each gives itself
+     exactly ONE name (Config, Input, Entities, Render, Game) and hangs
+     everything off it. Two files using the same name would silently overwrite
+     each other. Example 03 does the same split with real modules, which removes
+     that risk and adds a requirement of its own.
+     ======================================================================== -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Breakout — seven files, script tags</title>
+<style>
+  body { background: #11151c; color: #e7ecf3; font-family: system-ui, sans-serif;
+         display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 20px; }
+  canvas { background: #0a0d12; border: 2px solid #2b3240; border-radius: 6px; }
+  p { max-width: 560px; font-size: 15px; line-height: 1.5; color: #a9b4c4; }
+  code { background: #1b2130; padding: 1px 5px; border-radius: 4px; }
+</style>
+</head>
+<body>
+<h1>Breakout, in seven files</h1>
+<canvas id="game" width="520" height="400"></canvas>
+<p>Identical to play. Arrow keys or A / D, <b>Space</b> to launch, <b>R</b> to restart.
+   Open the folder: <code>config.js</code> holds every number,
+   <code>input.js</code> has never heard of Breakout, and <code>render.js</code> is the only
+   file that touches the canvas.</p>
+
+<!-- ORDER MATTERS. Top to bottom, and each file must come after everything it
+     needs. This list is the dependency graph, written out by hand. -->
+<script src="config.js"></script>     <!-- needs nothing -->
+<script src="input.js"></script>      <!-- needs nothing -->
+<script src="entities.js"></script>   <!-- needs Config -->
+<script src="render.js"></script>     <!-- needs Config -->
+<script src="game.js"></script>       <!-- needs Config, Input, Entities -->
+<script src="main.js"></script>       <!-- needs Game, Render. Always last. -->
+</body>
+</html>

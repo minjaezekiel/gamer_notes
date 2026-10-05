@@ -1,0 +1,240 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Which Way Do Dependencies Point?</title>
+<meta name="description" content="Step through working out a safe load order for seven files, then add one arrow that makes the answer impossible.">
+<link rel="stylesheet" href="../css/notes.css">
+<link rel="stylesheet" href="../css/code.css">
+</head>
+<body>
+<div class="wrap">
+
+  <p class="breadcrumb"><a href="index.html">&larr; All visualizers</a></p>
+
+  <header class="lesson-head">
+    <p class="kicker">Concept 18 &middot; Works for JavaScript, Python and C++</p>
+    <h1>Which Way Do Dependencies Point?</h1>
+    <p class="meta">Load order, and why a loop has no answer. Used in: web I-L1 &middot; python A-L2 &middot; c++ I-L3 and A-L11</p>
+  </header>
+
+  <p class="lede">When you split one file into seven, you have invented a question that did not exist
+  before: <strong>which one is allowed to go first?</strong> There is a method for answering it, your
+  browser runs that method every time you use <code>import</code>, and for some sets of files it has
+  no answer at all.</p>
+
+  <div class="look-for">
+    <strong>What to look for</strong>
+    Each press of <span class="kbd">Step 1 frame</span> does one thing: it finds a file whose arrows
+    all point at files that are <em>already loaded</em>, and loads it. Watch the order build up on the
+    right &mdash; that is literally the order your <code>&lt;script&gt;</code> tags have to be in. Now
+    switch on the extra arrow and step again. The method stops with files left over, and no amount of
+    stepping will help: each survivor is waiting for one of the others. Nothing is broken. There is
+    simply no order, and a set of files with no order is a design mistake.
+  </div>
+
+  <div id="depDemo"></div>
+
+</div>
+
+<script src="../js/page.js"></script>
+<script src="../js/anim.js"></script>
+<script src="../js/codeblock.js"></script>
+<script>
+/* ---------------------------------------------------------------------------
+   A dependency graph, resolved one node per frame.
+
+   This is Kahn's algorithm, which is the standard way to find a topological
+   order: repeatedly take a node with nothing left to wait for. Students do not
+   need the name. They need to see that the algorithm STALLS on a cycle while
+   still holding nodes, because that is the moment "circular dependency" stops
+   being a phrase and becomes a thing they watched happen.
+   ------------------------------------------------------------------------ */
+(function () {
+  var NW = 112, NH = 40;                 // node box size
+  var PANEL_X = 626;
+
+  /* Positions are hand-placed: a tidy layered picture teaches better than
+     anything a layout algorithm would produce at this size. */
+  var NODES = [
+    { id: 'main.js',     x: 300, y: 82,  needs: ['game.js'] },
+    { id: 'game.js',     x: 300, y: 164, needs: ['input.js', 'entities.js', 'render.js', 'hud.js'] },
+    { id: 'input.js',    x: 72,  y: 258, needs: [] },
+    { id: 'entities.js', x: 204, y: 258, needs: ['config.js'] },
+    { id: 'render.js',   x: 336, y: 258, needs: ['config.js'] },
+    { id: 'hud.js',      x: 474, y: 258, needs: ['config.js'] },
+    { id: 'config.js',   x: 300, y: 364, needs: [] }
+  ];
+  var cycleToggle;
+
+  function byId(id) {
+    for (var i = 0; i < NODES.length; i++) { if (NODES[i].id === id) { return NODES[i]; } }
+    return null;
+  }
+
+  /* The live edge list: the fixed ones, plus the extra one when it is on. */
+  function needsOf(node) {
+    var list = node.needs.slice();
+    if (cycleToggle && cycleToggle.checked && node.id === 'hud.js') {
+      list.push('game.js');     // hud reaches back up to the thing above it
+    }
+    return list;
+  }
+
+  /* Draw an arrow from one box's edge to another's, not centre to centre, so
+     the arrowhead is visible instead of buried under a label. */
+  function edge(g, from, to, colour, width) {
+    var dx = to.x - from.x, dy = to.y - from.y;
+    var len = Math.hypot(dx, dy) || 1;
+    var ux = dx / len, uy = dy / len;
+    var pad = NH / 2 + 4;
+    g.arrow(from.x + ux * pad * 1.1, from.y + uy * pad * 1.1,
+            to.x - ux * pad * 1.25, to.y - uy * pad * 1.25, colour, width);
+  }
+
+  var sk = Anim.sketch({
+    mount: '#depDemo',
+    width: 900, height: 440,
+    fps: 2,                      // one logical frame = load one file
+    controls: ['play', 'step', 'reset', 'speed'],
+
+    state: function () {
+      return { loaded: [], stalled: false, justLoaded: null };
+    },
+
+    update: function (s) {
+      if (s.loaded.length === NODES.length) { s.justLoaded = null; return; }
+
+      /* Find a file whose every dependency is already loaded. */
+      var pick = null;
+      for (var i = 0; i < NODES.length && !pick; i++) {
+        var n = NODES[i];
+        if (s.loaded.indexOf(n.id) >= 0) { continue; }
+        var ready = true;
+        var needs = needsOf(n);
+        for (var j = 0; j < needs.length; j++) {
+          if (s.loaded.indexOf(needs[j]) < 0) { ready = false; }
+        }
+        if (ready) { pick = n; }
+      }
+
+      if (pick) {
+        s.loaded.push(pick.id);
+        s.justLoaded = pick.id;
+        s.stalled = false;
+      } else {
+        /* Nothing can go next, and files remain. That is a cycle. */
+        s.justLoaded = null;
+        s.stalled = true;
+      }
+    },
+
+    draw: function (s, g, api) {
+      var T = g.color;
+      g.clear();
+
+      g.text('SEVEN FILES, AND WHO NEEDS WHOM', 24, 46,
+        { size: 14, bold: true, color: T.muted });
+      g.text('an arrow from A to B means "A needs B, so B must load first"', 24, 66,
+        { size: 12, color: T.muted });
+
+      /* ---- the arrows, drawn under the boxes ---- */
+      for (var i = 0; i < NODES.length; i++) {
+        var from = NODES[i];
+        var needs = needsOf(from);
+        for (var j = 0; j < needs.length; j++) {
+          var to = byId(needs[j]);
+          var extra = (from.id === 'hud.js' && to.id === 'game.js');
+          var satisfied = s.loaded.indexOf(to.id) >= 0;
+          edge(g, from, to,
+               extra ? T.bad : (satisfied ? T.good : T.grid),
+               extra ? 3 : (satisfied ? 2.2 : 1.6));
+        }
+      }
+
+      /* ---- the boxes ---- */
+      for (i = 0; i < NODES.length; i++) {
+        var n = NODES[i];
+        var done = s.loaded.indexOf(n.id) >= 0;
+        var isNew = (s.justLoaded === n.id);
+        var waiting = !done && s.stalled;
+        var bg = isNew ? T.accent : (done ? T.good : (waiting ? T.bad : T.panel));
+        g.rect(n.x - NW / 2, n.y - NH / 2, NW, NH, bg);
+        g.strokeRect(n.x - NW / 2, n.y - NH / 2, NW, NH,
+                     done || waiting ? bg : T.grid, 1.5);
+        g.text(n.id, n.x, n.y + 5,
+          { size: 13, bold: true, mono: true, align: 'center',
+            color: (done || waiting) ? T.bg : T.ink });
+        if (done) {
+          g.text(String(s.loaded.indexOf(n.id) + 1), n.x - NW / 2 + 7, n.y - NH / 2 + 15,
+            { size: 11, bold: true, color: T.bg, mono: true });
+        }
+      }
+
+      /* ---- right panel: the order, as script tags ---- */
+      g.text('SAFE LOAD ORDER', PANEL_X, 46, { size: 14, bold: true, color: T.muted });
+      g.text('(what your index.html must say)', PANEL_X, 66, { size: 11.5, color: T.muted });
+
+      for (var k = 0; k < NODES.length; k++) {
+        var ly = 94 + k * 30;
+        if (k < s.loaded.length) {
+          g.rect(PANEL_X - 6, ly - 16, 262, 25, T.panel);
+          g.text((k + 1) + '. ' + s.loaded[k], PANEL_X, ly,
+            { size: 12.5, mono: true, bold: true, color: T.ink });
+        } else {
+          g.text((k + 1) + '. ' + (s.stalled ? '— impossible —' : '…'), PANEL_X, ly,
+            { size: 12.5, mono: true, color: s.stalled ? T.bad : T.grid });
+        }
+      }
+
+      var fy = 326;
+      if (s.stalled) {
+        g.rect(PANEL_X - 6, fy - 18, 262, 92, T.bad);
+        g.text('NO ORDER EXISTS', PANEL_X, fy, { size: 14, bold: true, color: T.bg });
+        g.text((NODES.length - s.loaded.length) + ' files are left and every',
+          PANEL_X, fy + 20, { size: 11.5, color: T.bg });
+        g.text('one is waiting for another of', PANEL_X, fy + 36, { size: 11.5, color: T.bg });
+        g.text('them. That is a cycle.', PANEL_X, fy + 52, { size: 11.5, color: T.bg });
+      } else if (s.loaded.length === NODES.length) {
+        g.rect(PANEL_X - 6, fy - 18, 262, 72, T.good);
+        g.text('ALL SEVEN RESOLVED', PANEL_X, fy, { size: 14, bold: true, color: T.bg });
+        g.text('Nothing loaded before something', PANEL_X, fy + 20, { size: 11.5, color: T.bg });
+        g.text('it needed. This order has a name:', PANEL_X, fy + 36, { size: 11.5, color: T.bg });
+        g.text('a topological order.', PANEL_X, fy + 52, { size: 11.5, bold: true, color: T.bg });
+      } else {
+        g.text('next: a file whose arrows all', PANEL_X, fy + 10, { size: 11.5, color: T.muted });
+        g.text('point at something already green', PANEL_X, fy + 26, { size: 11.5, color: T.muted });
+      }
+
+      g.text('loaded ' + s.loaded.length + ' of ' + NODES.length, 24, 420,
+        { size: 13, bold: true, mono: true, color: T.ink });
+
+      if (s.stalled) {
+        api.say('<strong>Stalled with ' + (NODES.length - s.loaded.length) + ' files left.</strong> ' +
+                '<code>hud.js</code> waits for <code>game.js</code>; <code>game.js</code> waits for ' +
+                '<code>hud.js</code>. The fix is not in the loader — it is to delete one arrow. Let ' +
+                'whoever calls the HUD <em>pass the score in</em>, and <code>hud.js</code> stops ' +
+                'needing anything above it.');
+      } else if (s.loaded.length === NODES.length) {
+        api.say('Done. Notice <code>config.js</code> and <code>input.js</code> went first: they need ' +
+                'nothing, which is exactly what makes them reusable.');
+      } else if (s.justLoaded) {
+        api.say('Loaded <strong>' + s.justLoaded + '</strong>, because everything it needed was ' +
+                'already green. Press Step again.');
+      } else {
+        api.say('Press <strong>Step 1 frame</strong>. Each press loads exactly one file.');
+      }
+    },
+
+    onReset: function (s, api) {
+      api.say('Press <strong>Step 1 frame</strong> seven times, then switch the extra arrow on and ' +
+              'press Reset.');
+    }
+  });
+
+  cycleToggle = sk.toggle('add hud.js → game.js (a circular dependency)', false);
+}());
+</script>
+</body>
+</html>

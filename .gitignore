@@ -23,6 +23,12 @@ invaders
 __pycache__/
 *.pyc
 
+# The verification virtual environment. tools/check_pygame.py installs pygame-ce
+# in here so that checking the intermediate Python lessons never touches the
+# system Python. It is a tool, not content, and it is rebuilt with one command:
+#     python3 -m venv tools/.venv && tools/.venv/bin/pip install pygame-ce
+tools/.venv/
+
 # Handout HTML is the intermediate step on the way to the PDF. The PDFs ARE
 # committed, so a teacher can print without running anything; the HTML is not,
 # because it regenerates and would just be a duplicate of the same content.

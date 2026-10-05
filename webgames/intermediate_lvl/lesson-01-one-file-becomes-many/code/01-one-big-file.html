@@ -1,0 +1,215 @@
+<!doctype html>
+<!-- ===========================================================================
+     01-one-big-file.html — a complete small Breakout, all in one file.
+
+     WHAT THIS DEMONSTRATES
+     Nothing is wrong with this program. It runs, it plays, and every line in it
+     is code you wrote at beginner level. That is the point: we are going to take
+     apart something that works, which is the only safe way to practise.
+
+     HOW TO RUN IT
+     Double-click the file. No server, no tools, no internet.
+
+     WHAT TO CHANGE FIRST
+     Try to answer these three questions by reading, and time yourself:
+       1. How fast does the ball move?            (scroll... keep scrolling)
+       2. Which line decides the brick colours?
+       3. If you wanted the paddle at the TOP instead of the bottom, how many
+          separate places would you have to edit?
+     Question 3 is the one that matters. Count them. That number is why the next
+     example exists.
+     ======================================================================== -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Breakout — one file</title>
+<style>
+  body { background: #11151c; color: #e7ecf3; font-family: system-ui, sans-serif;
+         display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 20px; }
+  canvas { background: #0a0d12; border: 2px solid #2b3240; border-radius: 6px; }
+  p { max-width: 520px; font-size: 15px; line-height: 1.5; color: #a9b4c4; }
+</style>
+</head>
+<body>
+<h1>Breakout, in one file</h1>
+<canvas id="game" width="520" height="400"></canvas>
+<p>Arrow keys or A / D to move. Press <b>Space</b> to launch, <b>R</b> to restart.
+   This is 1 file and about 150 lines. The next example is the same game in 7 files.</p>
+
+<script>
+/* ---- everything lives here. That is the whole problem. ---- */
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+
+// Tuning numbers, scattered wherever they were first needed.
+const PADDLE_SPEED = 430;
+const BALL_SPEED = 260;
+const BRICK_ROWS = 4;
+const BRICK_COLS = 8;
+const BRICK_H = 20;
+const BRICK_GAP = 4;
+const LIVES_AT_START = 3;
+
+// Game state, also scattered.
+let paddle = { x: 210, y: 370, w: 92, h: 12 };
+let ball = { x: 260, y: 356, r: 7, speedX: 0, speedY: 0, stuck: true };
+let bricks = [];
+let score = 0;
+let lives = LIVES_AT_START;
+let mode = "playing";          // "playing" | "won" | "lost"
+const keys = {};
+
+document.addEventListener("keydown", function (event) {
+  keys[event.key] = true;
+  if (event.key.startsWith("Arrow") || event.key === " ") { event.preventDefault(); }
+  if (event.key === "r" || event.key === "R") { resetEverything(); }
+});
+document.addEventListener("keyup", function (event) { keys[event.key] = false; });
+
+function buildBricks() {
+  bricks = [];
+  const brickW = (canvas.width - BRICK_GAP) / BRICK_COLS - BRICK_GAP;
+  for (let row = 0; row < BRICK_ROWS; row++) {
+    for (let col = 0; col < BRICK_COLS; col++) {
+      bricks.push({
+        x: BRICK_GAP + col * (brickW + BRICK_GAP) + BRICK_GAP / 2,
+        y: 50 + row * (BRICK_H + BRICK_GAP),
+        w: brickW, h: BRICK_H,
+        alive: true,
+        // the colour decision, buried in the middle of the layout code
+        colour: ["#ff6b6b", "#ffd43b", "#51cf66", "#4dabf7"][row % 4]
+      });
+    }
+  }
+}
+
+function resetEverything() {
+  score = 0;
+  lives = LIVES_AT_START;
+  mode = "playing";
+  buildBricks();
+  resetBall();
+}
+
+function resetBall() {
+  ball.stuck = true;
+  ball.x = paddle.x + paddle.w / 2;
+  ball.y = paddle.y - ball.r - 1;
+  ball.speedX = 0;
+  ball.speedY = 0;
+}
+
+function update(dt) {
+  if (mode !== "playing") { return; }
+
+  // --- paddle ---
+  if (keys["ArrowLeft"] || keys["a"])  { paddle.x -= PADDLE_SPEED * dt; }
+  if (keys["ArrowRight"] || keys["d"]) { paddle.x += PADDLE_SPEED * dt; }
+  if (paddle.x < 0) { paddle.x = 0; }
+  if (paddle.x + paddle.w > canvas.width) { paddle.x = canvas.width - paddle.w; }
+
+  // --- launch ---
+  if (ball.stuck) {
+    ball.x = paddle.x + paddle.w / 2;
+    ball.y = paddle.y - ball.r - 1;
+    if (keys[" "]) {
+      ball.stuck = false;
+      ball.speedX = BALL_SPEED * 0.45;
+      ball.speedY = -BALL_SPEED;
+    }
+    return;
+  }
+
+  // --- ball ---
+  ball.x += ball.speedX * dt;
+  ball.y += ball.speedY * dt;
+
+  if (ball.x - ball.r < 0)             { ball.x = ball.r; ball.speedX = -ball.speedX; }
+  if (ball.x + ball.r > canvas.width)  { ball.x = canvas.width - ball.r; ball.speedX = -ball.speedX; }
+  if (ball.y - ball.r < 0)             { ball.y = ball.r; ball.speedY = -ball.speedY; }
+
+  if (ball.y - ball.r > canvas.height) {
+    lives -= 1;
+    if (lives <= 0) { mode = "lost"; } else { resetBall(); }
+  }
+
+  // --- paddle bounce, with the angle depending on where it hit ---
+  if (ball.y + ball.r > paddle.y && ball.y - ball.r < paddle.y + paddle.h &&
+      ball.x > paddle.x && ball.x < paddle.x + paddle.w && ball.speedY > 0) {
+    ball.y = paddle.y - ball.r;
+    ball.speedY = -Math.abs(ball.speedY);
+    const hitOffset = (ball.x - (paddle.x + paddle.w / 2)) / (paddle.w / 2);
+    ball.speedX = BALL_SPEED * 0.75 * hitOffset;
+  }
+
+  // --- bricks ---
+  for (let i = 0; i < bricks.length; i++) {
+    const b = bricks[i];
+    if (!b.alive) { continue; }
+    if (ball.x + ball.r > b.x && ball.x - ball.r < b.x + b.w &&
+        ball.y + ball.r > b.y && ball.y - ball.r < b.y + b.h) {
+      b.alive = false;
+      score += 10;
+      ball.speedY = -ball.speedY;
+      break;
+    }
+  }
+
+  let anyLeft = false;
+  for (let i = 0; i < bricks.length; i++) { if (bricks[i].alive) { anyLeft = true; } }
+  if (!anyLeft) { mode = "won"; }
+}
+
+function draw() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  for (let i = 0; i < bricks.length; i++) {
+    const b = bricks[i];
+    if (!b.alive) { continue; }
+    ctx.fillStyle = b.colour;
+    ctx.fillRect(b.x, b.y, b.w, b.h);
+  }
+
+  ctx.fillStyle = "#e7ecf3";
+  ctx.fillRect(paddle.x, paddle.y, paddle.w, paddle.h);
+  ctx.beginPath();
+  ctx.arc(ball.x, ball.y, ball.r, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.font = "bold 16px system-ui, sans-serif";
+  ctx.fillText("SCORE " + score, 10, 30);
+  ctx.textAlign = "right";
+  ctx.fillText("LIVES " + lives, canvas.width - 10, 30);
+  ctx.textAlign = "left";
+
+  if (mode !== "playing") {
+    ctx.textAlign = "center";
+    ctx.font = "bold 30px system-ui, sans-serif";
+    ctx.fillText(mode === "won" ? "CLEARED" : "GAME OVER", canvas.width / 2, 200);
+    ctx.font = "15px system-ui, sans-serif";
+    ctx.fillText("press R", canvas.width / 2, 230);
+    ctx.textAlign = "left";
+  } else if (ball.stuck) {
+    ctx.textAlign = "center";
+    ctx.font = "15px system-ui, sans-serif";
+    ctx.fillText("press SPACE to launch", canvas.width / 2, 250);
+    ctx.textAlign = "left";
+  }
+}
+
+let lastTime = 0;
+function frame(now) {
+  let dt = (now - lastTime) / 1000;
+  lastTime = now;
+  if (dt > 0.05) { dt = 0.05; }        // clamp, as in beginner lesson 2
+  update(dt);
+  draw();
+  requestAnimationFrame(frame);
+}
+
+buildBricks();
+resetBall();
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

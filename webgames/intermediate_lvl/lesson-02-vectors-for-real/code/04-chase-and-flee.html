@@ -1,0 +1,228 @@
+<!doctype html>
+<!-- ===========================================================================
+     04-chase-and-flee.html — one recipe, four behaviours.
+
+     WHAT THIS DEMONSTRATES
+     subtract, normalise, scale - and how little has to change to turn chasing
+     into fleeing, orbiting, or a guard with a field of view.
+
+       CHASER   dir = (player - me).normalise()        move along dir
+       RUNNER   dir = (me - player).normalise()        the SAME LINE, swapped
+       ORBITER  dir turned 90 degrees: (-y, x)
+       GUARD    only chases if facing.dot(toPlayer) > cos(halfAngle)
+
+     HOW TO RUN IT
+     Double-click. Move with the arrow keys or WASD, or drag with the mouse.
+
+     WHAT TO CHANGE FIRST
+     Set CONE to 1.0 and walk round the guard: it only ever notices you when you
+     are dead ahead. Then set it to -1 and it can see in every direction at once,
+     which is what a dot product of -1 means.
+     ======================================================================== -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Chase, flee, orbit, watch</title>
+<style>
+  body { background: #11151c; color: #e7ecf3; font-family: system-ui, sans-serif;
+         display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 18px; }
+  canvas { background: #0a0d12; border: 2px solid #2b3240; border-radius: 6px; }
+  p { max-width: 600px; font-size: 15px; line-height: 1.5; color: #a9b4c4; }
+  b { color: #ffd43b; }
+</style>
+</head>
+<body>
+<h1>One recipe, four behaviours</h1>
+<canvas id="game" width="660" height="440"></canvas>
+<p>Arrow keys / WASD, or drag the mouse. <b>Red</b> chases, <b>green</b> runs,
+   <b>yellow</b> orbits, and the <b>blue cone</b> only reacts when you are inside
+   its field of view. All four use the same three lines.</p>
+
+<script>
+class Vec2 {
+  constructor(x, y) { this.x = x; this.y = y; }
+  add(o)   { return new Vec2(this.x + o.x, this.y + o.y); }
+  sub(o)   { return new Vec2(this.x - o.x, this.y - o.y); }
+  scale(k) { return new Vec2(this.x * k, this.y * k); }
+  length() { return Math.hypot(this.x, this.y); }
+  lengthSquared() { return this.x * this.x + this.y * this.y; }
+  normalise() {
+    const len = this.length();
+    if (len === 0) { return new Vec2(0, 0); }   // the NaN guard
+    return new Vec2(this.x / len, this.y / len);
+  }
+  dot(o) { return this.x * o.x + this.y * o.y; }
+  /* Turn 90 degrees: swap the parts and negate one. Worth remembering - it is
+     how you get "sideways" without any trigonometry at all. */
+  perpendicular() { return new Vec2(-this.y, this.x); }
+  static fromAngle(r) { return new Vec2(Math.cos(r), Math.sin(r)); }
+}
+
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+
+const PLAYER_SPEED = 260;
+const CHASE_SPEED = 130;
+const CONE = 0.7;                // cos(45 deg). Bigger = narrower cone.
+const GUARD_SIGHT = 230;
+
+const player = { pos: new Vec2(330, 220), r: 13 };
+const agents = [
+  { kind: "chaser",  pos: new Vec2(90, 90),   colour: "#ff6b6b", label: "CHASE" },
+  { kind: "runner",  pos: new Vec2(560, 110), colour: "#51cf66", label: "FLEE" },
+  { kind: "orbiter", pos: new Vec2(120, 350), colour: "#ffd43b", label: "ORBIT" }
+];
+const guard = { pos: new Vec2(520, 340), angle: -2.3, alerted: false, dot: 0 };
+
+const keys = {};
+document.addEventListener("keydown", function (e) {
+  keys[e.key.toLowerCase()] = true;
+  if (e.key.startsWith("Arrow")) { e.preventDefault(); }
+});
+document.addEventListener("keyup", function (e) { keys[e.key.toLowerCase()] = false; });
+canvas.addEventListener("mousemove", function (e) {
+  if (e.buttons !== 1) { return; }
+  const b = canvas.getBoundingClientRect();
+  player.pos = new Vec2(e.clientX - b.left, e.clientY - b.top);
+});
+
+function update(dt) {
+  /* ---- the player, using lesson 2's normalised intent ---- */
+  let moveX = 0, moveY = 0;
+  if (keys["arrowright"] || keys["d"]) { moveX += 1; }
+  if (keys["arrowleft"]  || keys["a"]) { moveX -= 1; }
+  if (keys["arrowdown"]  || keys["s"]) { moveY += 1; }
+  if (keys["arrowup"]    || keys["w"]) { moveY -= 1; }
+  const intent = new Vec2(moveX, moveY).normalise();
+  player.pos = player.pos.add(intent.scale(PLAYER_SPEED * dt));
+  player.pos.x = Math.max(14, Math.min(canvas.width - 14, player.pos.x));
+  player.pos.y = Math.max(14, Math.min(canvas.height - 14, player.pos.y));
+
+  /* ---- the three simple agents ---- */
+  for (let i = 0; i < agents.length; i++) {
+    const a = agents[i];
+
+    // STEP 1 - SUBTRACT. "target minus me" is the way to the target.
+    const toPlayer = player.pos.sub(a.pos);
+
+    // STEP 2 - NORMALISE. Direction only; the distance is thrown away on purpose,
+    // or the agent would move faster the further away it was.
+    let direction = toPlayer.normalise();
+
+    if (a.kind === "runner") {
+      // The same line with the subtraction the other way round. That is the
+      // entire difference between chasing and fleeing.
+      direction = direction.scale(-1);
+    } else if (a.kind === "orbiter") {
+      // Sideways, plus a nudge inwards so it does not drift away for ever.
+      const sideways = direction.perpendicular();
+      direction = sideways.add(direction.scale(0.22)).normalise();
+    }
+
+    // STEP 3 - SCALE, then add. Stop short so a chaser does not sit on top of
+    // the player: that would make toPlayer zero-length, which is the one case
+    // normalise() cannot answer honestly.
+    if (toPlayer.length() > 22 || a.kind !== "chaser") {
+      a.pos = a.pos.add(direction.scale(CHASE_SPEED * dt));
+    }
+    a.pos.x = Math.max(12, Math.min(canvas.width - 12, a.pos.x));
+    a.pos.y = Math.max(12, Math.min(canvas.height - 12, a.pos.y));
+  }
+
+  /* ---- the guard: a field of view, using one dot product ---- */
+  const toPlayer = player.pos.sub(guard.pos);
+  const facing = Vec2.fromAngle(guard.angle);
+  guard.dot = facing.dot(toPlayer.normalise());
+  const closeEnough = toPlayer.lengthSquared() < GUARD_SIGHT * GUARD_SIGHT;
+  guard.alerted = closeEnough && guard.dot > CONE;
+
+  if (guard.alerted) {
+    guard.pos = guard.pos.add(toPlayer.normalise().scale(CHASE_SPEED * 1.1 * dt));
+    guard.angle = toPlayer.length() > 0 ? Math.atan2(toPlayer.y, toPlayer.x) : guard.angle;
+  } else {
+    guard.angle += 0.5 * dt;        // sweep slowly, looking around
+  }
+}
+
+function drawAgent(a) {
+  ctx.fillStyle = a.colour;
+  ctx.beginPath();
+  ctx.arc(a.pos.x, a.pos.y, 11, 0, Math.PI * 2);
+  ctx.fill();
+
+  // the direction arrow it is actually using this frame
+  const toPlayer = player.pos.sub(a.pos);
+  let d = toPlayer.normalise();
+  if (a.kind === "runner") { d = d.scale(-1); }
+  if (a.kind === "orbiter") { d = d.perpendicular().add(d.scale(0.22)).normalise(); }
+  const tip = a.pos.add(d.scale(38));
+  ctx.strokeStyle = a.colour;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(a.pos.x, a.pos.y);
+  ctx.lineTo(tip.x, tip.y);
+  ctx.stroke();
+
+  ctx.font = "bold 11px system-ui, sans-serif";
+  ctx.fillText(a.label, a.pos.x - 16, a.pos.y - 17);
+}
+
+function draw() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  /* the guard's cone, drawn from the same numbers the test uses */
+  const halfAngle = Math.acos(CONE);     // turn the dot threshold back into an angle
+  ctx.fillStyle = guard.alerted ? "rgba(255,107,107,0.18)" : "rgba(77,171,247,0.13)";
+  ctx.beginPath();
+  ctx.moveTo(guard.pos.x, guard.pos.y);
+  ctx.arc(guard.pos.x, guard.pos.y, GUARD_SIGHT,
+          guard.angle - halfAngle, guard.angle + halfAngle);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.fillStyle = guard.alerted ? "#ff6b6b" : "#4dabf7";
+  ctx.beginPath();
+  ctx.arc(guard.pos.x, guard.pos.y, 12, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.font = "bold 11px system-ui, sans-serif";
+  ctx.fillText(guard.alerted ? "SEES YOU" : "WATCHING", guard.pos.x - 26, guard.pos.y - 18);
+
+  for (let i = 0; i < agents.length; i++) { drawAgent(agents[i]); }
+
+  // the dashed line from guard to player: the vector every test is about
+  ctx.strokeStyle = "#394252";
+  ctx.setLineDash([4, 5]);
+  ctx.beginPath();
+  ctx.moveTo(guard.pos.x, guard.pos.y);
+  ctx.lineTo(player.pos.x, player.pos.y);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  ctx.fillStyle = "#e7ecf3";
+  ctx.beginPath();
+  ctx.arc(player.pos.x, player.pos.y, player.r, 0, Math.PI * 2);
+  ctx.fill();
+
+  /* the numbers */
+  ctx.font = "13px ui-monospace, Menlo, monospace";
+  ctx.fillStyle = "#8793a4";
+  ctx.fillText("facing . toPlayer = " + guard.dot.toFixed(2), 12, 24);
+  ctx.fillText("needs to be  > " + CONE.toFixed(2) +
+               "   (cos " + (halfAngle * 180 / Math.PI).toFixed(0) + " deg)", 12, 42);
+  ctx.fillStyle = guard.alerted ? "#ff6b6b" : "#51cf66";
+  ctx.fillText(guard.alerted ? "-> inside the cone" : "-> outside the cone", 12, 60);
+}
+
+let lastTime = 0;
+function frame(now) {
+  let dt = (now - lastTime) / 1000;
+  lastTime = now;
+  if (dt > 0.05) { dt = 0.05; }
+  update(dt);
+  draw();
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

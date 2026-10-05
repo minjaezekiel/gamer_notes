@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Spritesheets and Animation</title>
+<meta name="description" content="A spritesheet is one image and a rectangle. Step through the frame timer and watch the source rectangle slide across the sheet.">
+<link rel="stylesheet" href="../css/notes.css">
+<link rel="stylesheet" href="../css/code.css">
+</head>
+<body>
+<div class="wrap">
+
+  <p class="breadcrumb"><a href="index.html">&larr; All visualizers</a></p>
+
+  <header class="lesson-head">
+    <p class="kicker">Concept 13 &middot; Works for JavaScript, Python and C++</p>
+    <h1>Spritesheets and Animation</h1>
+    <p class="meta">One image, one moving rectangle. Used in: web I-L4 &middot; python I-L5 &middot; c++ I-L7</p>
+  </header>
+
+  <p class="lede">A walking character is not many images. It is <strong>one</strong> image with the
+  poses laid out in a row, plus a rectangle that says which part of it to copy. Moving that rectangle
+  along is the entire animation system.</p>
+
+  <div class="look-for">
+    <strong>What to look for</strong>
+    Two clocks are running and they are <em>not</em> the same clock. Press
+    <span class="kbd">Step 1 frame</span> repeatedly. The <strong>game</strong> advances one frame
+    every press, but the <strong>sprite</strong> only changes pose when the timer bar at the bottom
+    fills up. Several game frames pass per sprite frame &mdash; and that is deliberate. Then switch on
+    &ldquo;advance every game frame&rdquo; and watch the character vibrate instead of walk.
+  </div>
+
+  <div id="spriteDemo"></div>
+
+</div>
+
+<script src="../js/page.js"></script>
+<script src="../js/anim.js"></script>
+<script src="../js/codeblock.js"></script>
+<script>
+/* ---------------------------------------------------------------------------
+   Spritesheet animation, with the frame TIMER made visible.
+
+   The sheet here is drawn with code rather than loaded from a .png, for two
+   reasons: this repository ships no binary assets, and a student who watches the
+   poses get drawn understands that a sheet is just pixels in a grid.
+
+   The teaching device is the timer bar. Nearly every student's first animated
+   sprite advances one pose per game frame, runs at 60 poses a second, and looks
+   like a seizure. Seeing the two clocks separately is the fix.
+   ------------------------------------------------------------------------ */
+(function () {
+  var CELL = 78;                       // one cell of the "spritesheet"
+  var SHEET_X = 30, SHEET_Y = 86;      // where the sheet is drawn
+  var FRAMES = 6;                      // poses on the sheet
+  var STAGE_X = 560, STAGE_Y = 96;     // where the big character stands
+  var fpsSlider, everyFrameToggle;
+
+  /* Draw one pose of a run cycle into a box. phase 0..1 goes round the cycle. */
+  function pose(g, x, y, size, phase, T, thick) {
+    var cx = x + size / 2;
+    var swing = Math.sin(phase * Math.PI * 2);
+    var bob = Math.abs(Math.cos(phase * Math.PI * 2)) * size * 0.04;
+    var headR = size * 0.12;
+    var headY = y + size * 0.22 + bob;
+    var hipY = y + size * 0.62 + bob;
+    var w = thick || Math.max(2, size * 0.045);
+
+    g.circle(cx, headY, headR, T.accent);                  // head
+    g.line(cx, headY + headR, cx, hipY, T.accent, w);      // spine
+    // arms swing opposite to the legs
+    g.line(cx, headY + headR * 1.6, cx - size * 0.20 * swing,
+           headY + headR * 1.6 + size * 0.16, T.accent, w);
+    g.line(cx, headY + headR * 1.6, cx + size * 0.20 * swing,
+           headY + headR * 1.6 + size * 0.16, T.accent, w);
+    // legs
+    g.line(cx, hipY, cx + size * 0.20 * swing, y + size * 0.92, T.accent2, w);
+    g.line(cx, hipY, cx - size * 0.20 * swing, y + size * 0.92, T.accent2, w);
+  }
+
+  var sk = Anim.sketch({
+    mount: '#spriteDemo',
+    width: 900, height: 430,
+    fps: 20,                     // slow, so the two clocks are tellable apart
+    controls: ['play', 'step', 'reset', 'speed'],
+
+    state: function () {
+      return {
+        frameIndex: 0,           // which pose on the sheet we are showing
+        timer: 0,                // seconds collected towards the next pose
+        advancedThisFrame: false
+      };
+    },
+
+    update: function (s, dt) {
+      var animFps = fpsSlider ? fpsSlider.value : 8;
+      var frameTime = 1 / animFps;        // seconds each pose is held for
+      s.advancedThisFrame = false;
+
+      if (everyFrameToggle && everyFrameToggle.checked) {
+        /* THE COMMON BUG: one pose per game frame. The animation speed is now
+           whatever the frame rate happens to be, which is not a decision
+           anybody made. */
+        s.frameIndex = (s.frameIndex + 1) % FRAMES;
+        s.advancedThisFrame = true;
+        return;
+      }
+
+      /* THE FIX: collect time, and spend it in whole poses. This is the same
+         accumulator idea as delta time, applied to the animation. */
+      s.timer = s.timer + dt;
+      while (s.timer >= frameTime) {
+        s.timer = s.timer - frameTime;
+        s.frameIndex = (s.frameIndex + 1) % FRAMES;
+        s.advancedThisFrame = true;
+      }
+    },
+
+    draw: function (s, g, api) {
+      var T = g.color;
+      var animFps = fpsSlider ? fpsSlider.value : 8;
+      var frameTime = 1 / animFps;
+      g.clear();
+
+      /* ---- the spritesheet: one image, FRAMES cells wide ---- */
+      g.text('THE SPRITESHEET — one image file', SHEET_X, SHEET_Y - 34,
+        { size: 14, bold: true, color: T.muted });
+      g.text('run.png  ·  ' + (FRAMES * CELL) + ' × ' + CELL + ' pixels',
+        SHEET_X, SHEET_Y - 14, { size: 12, color: T.muted, mono: true });
+
+      for (var i = 0; i < FRAMES; i++) {
+        var cx = SHEET_X + i * CELL;
+        g.rect(cx, SHEET_Y, CELL, CELL, T.panel);
+        g.strokeRect(cx, SHEET_Y, CELL, CELL, T.grid, 1);
+        pose(g, cx + 6, SHEET_Y + 6, CELL - 12, i / FRAMES, T, 2.5);
+        g.text(String(i), cx + 5, SHEET_Y + CELL - 6, { size: 11, color: T.muted, mono: true });
+      }
+
+      /* ---- the source rectangle: the whole animation system, right here ---- */
+      var sx = SHEET_X + s.frameIndex * CELL;
+      g.strokeRect(sx - 2, SHEET_Y - 2, CELL + 4, CELL + 4, T.bad, 3.5);
+      g.badge('source rect', sx + CELL / 2, SHEET_Y - 40,
+        { align: 'center', bold: true, color: T.bad, border: T.bad });
+      g.arrow(sx + CELL / 2, SHEET_Y + CELL + 8, sx + CELL / 2, SHEET_Y + CELL + 30, T.bad, 2.5);
+
+      /* ---- the copy, drawn big on the stage ---- */
+      g.text('WHAT THE PLAYER SEES', STAGE_X, SHEET_Y - 34,
+        { size: 14, bold: true, color: T.muted });
+      g.rect(STAGE_X, STAGE_Y, 190, 190, T.panel);
+      g.strokeRect(STAGE_X, STAGE_Y, 190, 190, T.grid, 1);
+      pose(g, STAGE_X + 20, STAGE_Y + 14, 160, s.frameIndex / FRAMES, T, 6);
+      g.text('drawn at 2× size — same pixels', STAGE_X, STAGE_Y + 212,
+        { size: 12, color: T.muted });
+
+      /* ---- the two clocks, side by side ---- */
+      var barY = 320;
+      g.text('GAME CLOCK', SHEET_X, barY - 8, { size: 13, bold: true, color: T.accent });
+      g.text('frame ' + api.frame + '  ·  ' + api.time.toFixed(2) + ' s',
+        SHEET_X + 110, barY - 8, { size: 13, color: T.ink, mono: true });
+
+      g.text('SPRITE CLOCK', SHEET_X, barY + 30, { size: 13, bold: true, color: T.accent2 });
+      g.text('pose ' + s.frameIndex + ' of ' + FRAMES + '  ·  held for ' +
+             frameTime.toFixed(3) + ' s', SHEET_X + 110, barY + 30,
+        { size: 13, color: T.ink, mono: true });
+
+      /* the timer bar: filling up is the whole point */
+      var bw = 420, bx = SHEET_X, by = barY + 46;
+      g.rect(bx, by, bw, 22, T.panel);
+      var fill = everyFrameToggle && everyFrameToggle.checked
+        ? 1 : Math.min(1, s.timer / frameTime);
+      g.rect(bx, by, bw * fill, 22, s.advancedThisFrame ? T.good : T.accent2);
+      g.strokeRect(bx, by, bw, 22, T.grid, 1);
+      g.text('timer: ' + s.timer.toFixed(3) + ' s of ' + frameTime.toFixed(3) + ' s',
+        bx + 8, by + 16, { size: 12, color: T.ink, mono: true });
+
+      /* ---- the call, with the live numbers in it ---- */
+      g.text('ctx.drawImage(sheet,  ' + (s.frameIndex * CELL) + ', 0, ' + CELL + ', ' + CELL +
+             ',   x, y, ' + (CELL * 2) + ', ' + (CELL * 2) + ')',
+        STAGE_X - 10, 400, { size: 13.5, bold: true, color: T.ink, mono: true });
+      g.text('              ↑ sheet   ↑ WHERE on the sheet      ↑ where on screen',
+        STAGE_X - 10, 418, { size: 11, color: T.muted, mono: true });
+
+      if (everyFrameToggle && everyFrameToggle.checked) {
+        api.say('<strong>One pose per game frame.</strong> The animation now runs at ' +
+                api.fps + ' poses a second, because that is the frame rate — a number ' +
+                'nobody chose. On a 144 Hz monitor it would be faster still.');
+      } else if (s.advancedThisFrame) {
+        api.say('The timer filled up, so the pose <strong>advanced to ' + s.frameIndex +
+                '</strong> and the leftover time was carried forward. Nothing was thrown away.');
+      } else {
+        api.say('A game frame passed and the pose did <strong>not</strong> change. The timer is ' +
+                'at ' + Math.round(fill * 100) + '% of ' + frameTime.toFixed(3) +
+                ' s. This is correct: the character holds each pose for several frames.');
+      }
+    },
+
+    onReset: function (s, api) {
+      api.say('Press <strong>Step 1 frame</strong> several times and watch which clock moves.');
+    }
+  });
+
+  fpsSlider = sk.slider('Animation poses per second', 2, 20, 8, 1);
+  everyFrameToggle = sk.toggle('advance every game frame (the bug)', false);
+}());
+</script>
+</body>
+</html>
