@@ -1,0 +1,314 @@
+<!doctype html>
+<!-- ===========================================================================
+     03-shake-and-hitstop.html — four shake mistakes and the four lines of
+     hitstop.
+
+     WHAT THIS DEMONSTRATES
+     Screen shake, with each of the four common mistakes on its own switch:
+        1  written into camera.x instead of applied as a draw-time offset
+        2  no decay
+        3  no cap
+        4  far too strong
+     plus hitstop (freeze the simulation, keep drawing), a white flash, and
+     squash-and-stretch on landing.
+
+     HOW TO RUN IT
+     Double-click. Arrow keys move, Space jumps, X hits the block.
+       1  shake via camera.x (bug)      2  no decay (bug)
+       3  no cap (bug)                  4  shake amount 40 (too much)
+       H  hitstop on / off              [ ]  hitstop shorter / longer
+       F  flash on / off                Q  squash on / off
+
+     WHAT TO CHANGE FIRST
+     Turn hitstop off, hit the block a few times, then turn it on. It is four lines
+     and it is the biggest difference in this file.
+     ======================================================================== -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Shake and hitstop</title>
+<style>
+  body { background: #11151c; color: #e7ecf3; font-family: system-ui, sans-serif;
+         display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 16px; }
+  canvas { background: #0a0d12; border: 2px solid #2b3240; border-radius: 6px; }
+  p { max-width: 650px; font-size: 14.5px; line-height: 1.5; color: #a9b4c4; }
+  b { color: #ffd43b; }
+</style>
+</head>
+<body>
+<h1>Shake, and the four lines</h1>
+<canvas id="game" width="700" height="430"></canvas>
+<p>Arrows &middot; <b>Space</b> jump &middot; <b>X</b> hit the block &middot;
+   <b>1 2 3 4</b> the four shake mistakes &middot; <b>H</b> hitstop &middot;
+   <b>[ ]</b> its length &middot; <b>F</b> flash &middot; <b>Q</b> squash.</p>
+
+<script>
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+
+const GROUND_Y = 350;
+const MAX_SHAKE = 14;
+const SHAKE_DECAY = 7;
+
+const player = { x: 200, y: GROUND_Y - 34, w: 24, h: 34, vx: 0, vy: 0,
+                 onGround: true, squash: 0 };
+const block = { x: 430, y: GROUND_Y - 60, w: 52, h: 60, flash: 0, hp: 5, shove: 0 };
+const camera = { x: 0 };
+
+let shake = 0;
+let hitstop = 0;
+let hitstopLength = 0.06;
+
+let bugCameraShake = false;
+let bugNoDecay = false;
+let bugNoCap = false;
+let bugTooMuch = false;
+let useHitstop = true;
+let useFlash = true;
+let useSquash = true;
+
+const particles = [];
+const numbers = [];
+
+const keys = {};
+document.addEventListener("keydown", function (e) {
+  if (!keys[e.key] && (e.key === "x" || e.key === "X")) { hitBlock(); }
+  keys[e.key] = true;
+  if (e.key.startsWith("Arrow") || e.key === " ") { e.preventDefault(); }
+  if (e.key === "1") { bugCameraShake = !bugCameraShake; }
+  if (e.key === "2") { bugNoDecay = !bugNoDecay; }
+  if (e.key === "3") { bugNoCap = !bugNoCap; }
+  if (e.key === "4") { bugTooMuch = !bugTooMuch; }
+  if (e.key === "h" || e.key === "H") { useHitstop = !useHitstop; }
+  if (e.key === "f" || e.key === "F") { useFlash = !useFlash; }
+  if (e.key === "q" || e.key === "Q") { useSquash = !useSquash; }
+  if (e.key === "]") { hitstopLength = Math.min(0.4, hitstopLength + 0.02); }
+  if (e.key === "[") { hitstopLength = Math.max(0, hitstopLength - 0.02); }
+});
+document.addEventListener("keyup", function (e) { keys[e.key] = false; });
+
+function addShake(amount) {
+  const n = bugTooMuch ? amount * 5 : amount;
+  if (bugCameraShake) {
+    /* MISTAKE 1: writing into the camera's real position. The random values do
+       not cancel out, so the view drifts and never comes back - and the follow
+       code fights it. */
+    camera.x += (Math.random() * 2 - 1) * n;
+    return;
+  }
+  shake = bugNoCap ? shake + n : Math.min(MAX_SHAKE, shake + n);
+}
+
+function spawnBurst(x, y, n, awayX) {
+  for (let i = 0; i < n; i++) {
+    /* away from the direction the hit came from: lesson 2's vectors doing
+       something immediately visible */
+    const a = Math.atan2(0, awayX) + (Math.random() - 0.5) * 1.8;
+    const s = 90 + Math.random() * 230;
+    const life = 0.3 + Math.random() * 0.4;
+    particles.push({ x: x, y: y, vx: Math.cos(a) * s, vy: Math.sin(a) * s - 60,
+                     life: life, maxLife: life, size: 3 + Math.random() * 3 });
+  }
+}
+
+function hitBlock() {
+  if (Math.abs((player.x + player.w / 2) - (block.x + block.w / 2)) > 90) { return; }
+  const dir = (player.x + player.w / 2) < (block.x + block.w / 2) ? 1 : -1;
+  block.hp -= 1;
+  block.flash = 1;
+  block.shove = 10 * dir;
+  spawnBurst(block.x + block.w / 2 - dir * 10, block.y + block.h / 2, 14, dir);
+  numbers.push({ x: block.x + block.w / 2, y: block.y, value: 1, life: 0.8, maxLife: 0.8 });
+  addShake(block.hp <= 0 ? 10 : 4);
+  if (useHitstop) { hitstop = block.hp <= 0 ? hitstopLength * 1.6 : hitstopLength; }
+  if (block.hp <= 0) {
+    spawnBurst(block.x + block.w / 2, block.y + block.h / 2, 40, dir);
+    block.hp = 5;
+    block.x = 360 + Math.random() * 240;
+  }
+}
+
+function frameUpdate(realDt) {
+  /* ---- HITSTOP: four lines. The SIMULATION stops; presentation does not. ---- */
+  let dt = realDt;
+  if (hitstop > 0) {
+    hitstop -= realDt;
+    dt = 0;
+  }
+
+  /* ---- the simulation, which may be receiving dt = 0 ---- */
+  player.vx = 0;
+  if (keys["ArrowLeft"])  { player.vx = -250; }
+  if (keys["ArrowRight"]) { player.vx = 250; }
+  if ((keys[" "] || keys["ArrowUp"]) && player.onGround && dt > 0) {
+    player.vy = -540; player.onGround = false;
+  }
+  player.vy += 1500 * dt;
+  player.x += player.vx * dt;
+  player.y += player.vy * dt;
+  if (player.y + player.h >= GROUND_Y) {
+    if (!player.onGround && useSquash) {
+      /* squash in proportion to how hard the landing was */
+      player.squash = Math.min(1, player.vy / 700);
+    }
+    player.y = GROUND_Y - player.h;
+    player.vy = 0;
+    player.onGround = true;
+  }
+  player.x = Math.max(10, Math.min(canvas.width - 10 - player.w, player.x));
+
+  block.x += block.shove * dt * 6;
+  block.shove *= Math.exp(-9 * dt);
+
+  /* ---- presentation, which always uses REAL time ---- */
+  for (let i = 0; i < particles.length; i++) {
+    const p = particles[i];
+    p.vy += 900 * realDt;
+    p.x += p.vx * realDt;
+    p.y += p.vy * realDt;
+    p.life -= realDt;
+  }
+  for (let i = particles.length - 1; i >= 0; i--) {
+    if (particles[i].life <= 0) { particles.splice(i, 1); }
+  }
+  for (let i = numbers.length - 1; i >= 0; i--) {
+    numbers[i].y -= 40 * realDt;
+    numbers[i].life -= realDt;
+    if (numbers[i].life <= 0) { numbers.splice(i, 1); }
+  }
+
+  block.flash *= Math.exp(-10 * realDt);
+  player.squash *= Math.exp(-9 * realDt);
+
+  if (!bugNoDecay) { shake *= Math.exp(-SHAKE_DECAY * realDt); }
+  if (shake < 0.1 && !bugNoDecay) { shake = 0; }
+
+  /* the camera follows, which is what makes mistake 1 visible */
+  const wanted = player.x - canvas.width / 2 + 120;
+  camera.x += (wanted - camera.x) * (1 - Math.exp(-4 * realDt));
+}
+
+function draw() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = "#0f141b";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  /* ---- the shake offset, applied at DRAW time, inside save/restore ---- */
+  const ox = bugCameraShake ? 0 : (Math.random() * 2 - 1) * shake;
+  const oy = bugCameraShake ? 0 : (Math.random() * 2 - 1) * shake;
+
+  ctx.save();
+  ctx.translate(Math.round(ox - camera.x * 0.25), Math.round(oy));
+
+  ctx.fillStyle = "#1a2230";
+  ctx.fillRect(-200, GROUND_Y, canvas.width + 400, canvas.height - GROUND_Y);
+  for (let i = -4; i < 20; i++) {
+    ctx.fillStyle = "#222c3a";
+    ctx.fillRect(i * 80 + 20, GROUND_Y - 12, 36, 12);
+  }
+
+  /* the block, flashing white when hit */
+  ctx.fillStyle = "#7a5cff";
+  ctx.fillRect(block.x, block.y, block.w, block.h);
+  if (useFlash && block.flash > 0.01) {
+    ctx.globalAlpha = Math.min(1, block.flash);
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(block.x, block.y, block.w, block.h);
+    ctx.globalAlpha = 1;
+  }
+  ctx.fillStyle = "#e7ecf3";
+  ctx.font = "bold 12px ui-monospace, monospace";
+  ctx.fillText("hp " + block.hp, block.x + 8, block.y - 8);
+
+  /* the player, squashed on landing */
+  ctx.save();
+  const sq = useSquash ? player.squash : 0;
+  ctx.translate(player.x + player.w / 2, player.y + player.h);
+  ctx.scale(1 + sq * 0.45, 1 - sq * 0.45);
+  ctx.fillStyle = "#4dabf7";
+  ctx.fillRect(-player.w / 2, -player.h, player.w, player.h);
+  ctx.restore();
+
+  /* particles */
+  ctx.save();
+  for (let i = 0; i < particles.length; i++) {
+    const p = particles[i];
+    const t = p.life / p.maxLife;
+    ctx.globalAlpha = t;
+    ctx.fillStyle = t > 0.6 ? "#ffffff" : "#ffd43b";
+    ctx.fillRect(p.x, p.y, p.size * t, p.size * t);
+  }
+  ctx.restore();
+
+  /* floating numbers: the particle system, with text */
+  ctx.save();
+  for (let i = 0; i < numbers.length; i++) {
+    const n = numbers[i];
+    ctx.globalAlpha = n.life / n.maxLife;
+    ctx.fillStyle = "#ffd43b";
+    ctx.font = "bold 16px system-ui, sans-serif";
+    ctx.fillText("-" + n.value, n.x, n.y);
+  }
+  ctx.restore();
+
+  ctx.restore();          /* end of the shaken world */
+
+  /* ---- the HUD. Outside the shake, and it keeps drawing during hitstop. ---- */
+  ctx.fillStyle = "rgba(10,13,18,0.9)";
+  ctx.fillRect(10, 10, 300, 160);
+  ctx.strokeStyle = "#2b3240";
+  ctx.lineWidth = 1;
+  ctx.strokeRect(10, 10, 300, 160);
+
+  const rows = [
+    ["1  shake via camera.x", bugCameraShake, true],
+    ["2  no decay", bugNoDecay, true],
+    ["3  no cap", bugNoCap, true],
+    ["4  5x too strong", bugTooMuch, true],
+    ["H  hitstop", useHitstop, false],
+    ["F  flash", useFlash, false],
+    ["Q  squash", useSquash, false]
+  ];
+  ctx.font = "12px ui-monospace, Menlo, monospace";
+  for (let i = 0; i < rows.length; i++) {
+    const on = rows[i][1], isBug = rows[i][2];
+    ctx.fillStyle = on ? (isBug ? "#ff6b6b" : "#51cf66") : "#6b7480";
+    ctx.fillText((on ? "[x] " : "[ ] ") + rows[i][0], 22, 32 + i * 18);
+  }
+  ctx.fillStyle = "#8793a4";
+  ctx.fillText("shake " + shake.toFixed(1) + "   hitstop " +
+               Math.round(hitstopLength * 1000) + " ms ([ ])", 22, 164);
+
+  if (hitstop > 0) {
+    ctx.font = "bold 14px system-ui, sans-serif";
+    ctx.fillStyle = "#ffd43b";
+    ctx.fillText("HITSTOP — the world is frozen, the HUD is not", 330, 30);
+  }
+  if (bugNoDecay && shake > 0.1) {
+    ctx.font = "bold 13px system-ui, sans-serif";
+    ctx.fillStyle = "#ff6b6b";
+    ctx.fillText("no decay: it will shake for the rest of the game", 330, 52);
+  }
+  if (bugCameraShake) {
+    ctx.font = "bold 13px system-ui, sans-serif";
+    ctx.fillStyle = "#ff6b6b";
+    ctx.fillText("camera.x " + camera.x.toFixed(1) + " — the view has drifted", 330, 74);
+  }
+  ctx.font = "12px system-ui, sans-serif";
+  ctx.fillStyle = "#6b7480";
+  ctx.fillText("stand near the block and press X", 22, canvas.height - 14);
+}
+
+let lastTime = 0;
+function frame(now) {
+  let realDt = (now - lastTime) / 1000;
+  lastTime = now;
+  if (realDt > 0.05) { realDt = 0.05; }
+  frameUpdate(realDt);
+  draw();
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

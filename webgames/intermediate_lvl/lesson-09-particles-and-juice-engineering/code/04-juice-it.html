@@ -1,0 +1,394 @@
+<!doctype html>
+<!-- ===========================================================================
+     04-juice-it.html — the same game, eight switches.
+
+     WHAT THIS DEMONSTRATES
+     Not one rule changes when you flip these switches. The game is exactly as
+     difficult, exactly as fair, and plays exactly the same. Turn them all off,
+     play for a minute, then turn them on one at a time.
+
+     This file also contains the tween system from the notes, which is what stops
+     eight effects becoming eight scattered timers.
+
+     HOW TO RUN IT
+     Double-click. Arrows move, Space jumps, X swings at a block.
+       0  everything off        9  everything on
+       1  particles      2  shake        3  hitstop     4  flash
+       5  squash         6  numbers      7  trail       8  slow-in on spawn
+
+     WHAT TO CHANGE FIRST
+     Press 0, play for a minute, then 9. Then halve every number in the JUICE
+     object and play again - most people prefer the halved version, which is the
+     most useful thing in this lesson.
+     ======================================================================== -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Juice it</title>
+<style>
+  body { background: #11151c; color: #e7ecf3; font-family: system-ui, sans-serif;
+         display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 16px; }
+  canvas { background: #0a0d12; border: 2px solid #2b3240; border-radius: 6px; }
+  p { max-width: 660px; font-size: 14.5px; line-height: 1.5; color: #a9b4c4; }
+  b { color: #ffd43b; }
+</style>
+</head>
+<body>
+<h1>Same rules, eight switches</h1>
+<canvas id="game" width="720" height="440"></canvas>
+<p>Arrows &middot; <b>Space</b> jump &middot; <b>X</b> swing &middot;
+   <b>0</b> all off &middot; <b>9</b> all on &middot; <b>1</b>&ndash;<b>8</b> individual effects.
+   The frame-time readout stays on, because it should.</p>
+
+<script>
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+const GROUND_Y = 360;
+
+/* ---------------------------------------------------------------------------
+   THE NUMBERS. Every piece of juice in the game is tuned from here. Halve them
+   all and play again - that is the exercise.
+   ------------------------------------------------------------------------ */
+const JUICE = {
+  shakeHit: 4,
+  shakeKill: 10,
+  shakeMax: 14,
+  shakeDecay: 7,
+  hitstopHit: 0.055,
+  hitstopKill: 0.09,
+  flashTime: 0.12,
+  squashTime: 0.14,
+  particlesHit: 14,
+  particlesKill: 40,
+  trailLength: 10
+};
+
+const ON = { particles: true, shake: true, hitstop: true, flash: true,
+             squash: true, numbers: true, trail: true, spawnTween: true };
+const SWITCH_KEYS = ["particles", "shake", "hitstop", "flash",
+                     "squash", "numbers", "trail", "spawnTween"];
+
+/* ---------------------------------------------------------------------------
+   THE TWEEN SYSTEM. One list, one update, every effect that is "a number moving
+   from A to B over a time".
+   ------------------------------------------------------------------------ */
+const tweens = [];
+function easeOutQuad(x) { return 1 - (1 - x) * (1 - x); }
+function easeOutBack(x) {
+  const c = 1.70158;
+  return 1 + (c + 1) * Math.pow(x - 1, 3) + c * Math.pow(x - 1, 2);
+}
+function tween(target, field, to, duration, ease, onDone) {
+  tweens.push({ target: target, field: field, from: target[field], to: to,
+                t: 0, duration: duration, ease: ease || easeOutQuad, onDone: onDone });
+}
+function updateTweens(dt) {
+  for (let i = tweens.length - 1; i >= 0; i--) {
+    const w = tweens[i];
+    w.t += dt;
+    const k = Math.min(1, w.t / w.duration);
+    w.target[w.field] = w.from + (w.to - w.from) * w.ease(k);
+    if (k >= 1) {
+      tweens.splice(i, 1);
+      if (w.onDone) { w.onDone(); }
+    }
+  }
+}
+
+const player = { x: 180, y: GROUND_Y - 34, w: 24, h: 34, vx: 0, vy: 0,
+                 onGround: true, squash: 0, swing: 0, facing: 1 };
+const trail = [];
+const particles = [];
+const numbers = [];
+let blocks = [];
+let shake = 0;
+let hitstop = 0;
+let score = 0;
+
+function spawnBlock() {
+  const b = { x: 300 + Math.random() * 360, y: GROUND_Y - 54,
+              w: 46, h: 54, hp: 3, flash: 0, scale: 1 };
+  if (ON.spawnTween) {
+    /* a block that arrives with confidence: overshoot, then settle */
+    b.scale = 0;
+    tween(b, "scale", 1, 0.32, easeOutBack);
+  }
+  blocks.push(b);
+}
+for (let i = 0; i < 3; i++) { spawnBlock(); }
+
+const keys = {};
+document.addEventListener("keydown", function (e) {
+  if (!keys[e.key] && (e.key === "x" || e.key === "X")) { swing(); }
+  keys[e.key] = true;
+  if (e.key.startsWith("Arrow") || e.key === " ") { e.preventDefault(); }
+  if (e.key === "0") { SWITCH_KEYS.forEach(function (k) { ON[k] = false; }); }
+  if (e.key === "9") { SWITCH_KEYS.forEach(function (k) { ON[k] = true; }); }
+  const n = Number(e.key);
+  if (n >= 1 && n <= 8) { ON[SWITCH_KEYS[n - 1]] = !ON[SWITCH_KEYS[n - 1]]; }
+});
+document.addEventListener("keyup", function (e) { keys[e.key] = false; });
+
+function addShake(n) {
+  if (!ON.shake) { return; }
+  shake = Math.min(JUICE.shakeMax, shake + n);
+}
+
+function burst(x, y, n, dirX) {
+  if (!ON.particles) { return; }
+  for (let i = 0; i < n; i++) {
+    const a = (dirX > 0 ? 0 : Math.PI) + (Math.random() - 0.5) * 2.0;
+    const s = 80 + Math.random() * 240;
+    const life = 0.3 + Math.random() * 0.45;
+    particles.push({ x: x, y: y, vx: Math.cos(a) * s, vy: Math.sin(a) * s - 70,
+                     life: life, maxLife: life, size: 3 + Math.random() * 3 });
+  }
+}
+
+function swing() {
+  player.swing = 1;
+  tween(player, "swing", 0, 0.18);
+  const reach = 56;
+  const hx = player.x + player.w / 2 + player.facing * reach;
+
+  for (let i = blocks.length - 1; i >= 0; i--) {
+    const b = blocks[i];
+    if (Math.abs(hx - (b.x + b.w / 2)) > b.w / 2 + 18) { continue; }
+
+    b.hp -= 1;
+    score += 10;
+    if (ON.flash) { b.flash = 1; tween(b, "flash", 0, JUICE.flashTime); }
+    burst(b.x + b.w / 2 - player.facing * 8, b.y + b.h / 2, JUICE.particlesHit, player.facing);
+    if (ON.numbers) {
+      numbers.push({ x: b.x + b.w / 2, y: b.y - 4, value: 10, life: 0.8, maxLife: 0.8 });
+    }
+
+    if (b.hp <= 0) {
+      burst(b.x + b.w / 2, b.y + b.h / 2, JUICE.particlesKill, player.facing);
+      addShake(JUICE.shakeKill);
+      if (ON.hitstop) { hitstop = JUICE.hitstopKill; }
+      blocks.splice(i, 1);
+      score += 40;
+      spawnBlock();
+    } else {
+      addShake(JUICE.shakeHit);
+      if (ON.hitstop) { hitstop = JUICE.hitstopHit; }
+    }
+    break;
+  }
+}
+
+/* ---- frame-time measurement, which stays in the game for good ---- */
+const samples = [];
+let worstFrame = 0;
+function recordFrame(ms) {
+  samples.push(ms);
+  if (samples.length > 120) { samples.shift(); }
+  if (ms > worstFrame) { worstFrame = ms; }
+}
+
+function update(realDt) {
+  let dt = realDt;
+  if (hitstop > 0) { hitstop -= realDt; dt = 0; }      /* simulation stops */
+
+  player.vx = 0;
+  if (keys["ArrowLeft"])  { player.vx = -250; player.facing = -1; }
+  if (keys["ArrowRight"]) { player.vx = 250;  player.facing = 1; }
+  if ((keys[" "] || keys["ArrowUp"]) && player.onGround && dt > 0) {
+    player.vy = -540; player.onGround = false;
+  }
+  player.vy += 1500 * dt;
+  player.x += player.vx * dt;
+  player.y += player.vy * dt;
+  if (player.y + player.h >= GROUND_Y) {
+    if (!player.onGround && ON.squash) {
+      player.squash = Math.min(1, player.vy / 700);
+      tween(player, "squash", 0, JUICE.squashTime);
+    }
+    player.y = GROUND_Y - player.h;
+    player.vy = 0;
+    player.onGround = true;
+  }
+  player.x = Math.max(10, Math.min(canvas.width - 10 - player.w, player.x));
+
+  /* presentation runs on REAL time, always */
+  updateTweens(realDt);
+
+  if (ON.trail) {
+    trail.push({ x: player.x, y: player.y });
+    while (trail.length > JUICE.trailLength) { trail.shift(); }
+  } else {
+    trail.length = 0;
+  }
+
+  for (let i = 0; i < particles.length; i++) {
+    const p = particles[i];
+    p.vy += 950 * realDt;
+    p.x += p.vx * realDt;
+    p.y += p.vy * realDt;
+    p.life -= realDt;
+  }
+  for (let i = particles.length - 1; i >= 0; i--) {
+    if (particles[i].life <= 0) { particles.splice(i, 1); }
+  }
+  for (let i = numbers.length - 1; i >= 0; i--) {
+    numbers[i].y -= 46 * realDt;
+    numbers[i].life -= realDt;
+    if (numbers[i].life <= 0) { numbers.splice(i, 1); }
+  }
+
+  shake *= Math.exp(-JUICE.shakeDecay * realDt);
+  if (shake < 0.1) { shake = 0; }
+}
+
+function draw() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = "#0f141b";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  const ox = ON.shake ? (Math.random() * 2 - 1) * shake : 0;
+  const oy = ON.shake ? (Math.random() * 2 - 1) * shake : 0;
+
+  ctx.save();
+  ctx.translate(Math.round(ox), Math.round(oy));
+
+  ctx.fillStyle = "#1a2230";
+  ctx.fillRect(0, GROUND_Y, canvas.width, canvas.height - GROUND_Y);
+
+  /* trail: three lines, and the player feels faster */
+  ctx.save();
+  for (let i = 0; i < trail.length; i++) {
+    ctx.globalAlpha = 0.05 + 0.2 * (i / trail.length);
+    ctx.fillStyle = "#4dabf7";
+    ctx.fillRect(trail[i].x, trail[i].y, player.w, player.h);
+  }
+  ctx.restore();
+
+  for (let i = 0; i < blocks.length; i++) {
+    const b = blocks[i];
+    ctx.save();
+    ctx.translate(b.x + b.w / 2, b.y + b.h);
+    ctx.scale(b.scale, b.scale);
+    ctx.fillStyle = "#7a5cff";
+    ctx.fillRect(-b.w / 2, -b.h, b.w, b.h);
+    if (ON.flash && b.flash > 0.01) {
+      ctx.globalAlpha = b.flash;
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(-b.w / 2, -b.h, b.w, b.h);
+      ctx.globalAlpha = 1;
+    }
+    ctx.restore();
+    ctx.fillStyle = "#8793a4";
+    ctx.font = "bold 11px ui-monospace, monospace";
+    ctx.fillText("hp " + b.hp, b.x + 8, b.y - 8);
+  }
+
+  /* the player, with squash and a swing arc */
+  ctx.save();
+  const sq = ON.squash ? player.squash : 0;
+  ctx.translate(player.x + player.w / 2, player.y + player.h);
+  ctx.scale(1 + sq * 0.45, 1 - sq * 0.45);
+  ctx.fillStyle = "#4dabf7";
+  ctx.fillRect(-player.w / 2, -player.h, player.w, player.h);
+  ctx.restore();
+
+  if (player.swing > 0.01) {
+    ctx.save();
+    ctx.globalAlpha = player.swing;
+    ctx.strokeStyle = "#ffd43b";
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.arc(player.x + player.w / 2, player.y + player.h / 2, 48,
+            player.facing > 0 ? -0.9 : Math.PI + 0.9,
+            player.facing > 0 ? 0.9 : Math.PI - 0.9,
+            player.facing < 0);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  ctx.save();
+  for (let i = 0; i < particles.length; i++) {
+    const p = particles[i];
+    const t = p.life / p.maxLife;
+    ctx.globalAlpha = t;
+    /* colour over life: yellow -> red -> dark */
+    const g = Math.round(40 + 190 * t);
+    ctx.fillStyle = "rgb(255," + g + ",60)";
+    ctx.fillRect(p.x, p.y, p.size * t, p.size * t);
+  }
+  ctx.restore();
+
+  ctx.save();
+  for (let i = 0; i < numbers.length; i++) {
+    const n = numbers[i];
+    const t = n.life / n.maxLife;
+    ctx.globalAlpha = t;
+    ctx.fillStyle = "#ffd43b";
+    ctx.font = "bold 16px system-ui, sans-serif";
+    ctx.fillText("+" + n.value, n.x, n.y);
+  }
+  ctx.restore();
+
+  ctx.restore();   /* end of the shaken world */
+
+  /* ---- HUD: outside the shake, drawn during hitstop ---- */
+  ctx.fillStyle = "rgba(10,13,18,0.9)";
+  ctx.fillRect(10, 10, 232, 206);
+  ctx.strokeStyle = "#2b3240";
+  ctx.lineWidth = 1;
+  ctx.strokeRect(10, 10, 232, 206);
+
+  ctx.font = "bold 16px system-ui, sans-serif";
+  ctx.fillStyle = "#e7ecf3";
+  ctx.fillText("SCORE " + score, 22, 34);
+
+  ctx.font = "12px ui-monospace, Menlo, monospace";
+  for (let i = 0; i < SWITCH_KEYS.length; i++) {
+    const k = SWITCH_KEYS[i];
+    ctx.fillStyle = ON[k] ? "#51cf66" : "#6b7480";
+    ctx.fillText((ON[k] ? "[x] " : "[ ] ") + (i + 1) + "  " + k, 22, 58 + i * 18);
+  }
+
+  let total = 0;
+  for (let i = 0; i < samples.length; i++) { total += samples[i]; }
+  const avg = samples.length ? total / samples.length : 0;
+  ctx.fillStyle = "#8793a4";
+  ctx.fillText("avg frame  " + avg.toFixed(2) + " ms", 22, 212 - 12);
+  ctx.fillStyle = worstFrame > 16.7 ? "#ff6b6b" : "#51cf66";
+  ctx.fillText("worst      " + worstFrame.toFixed(2) + " ms", 22, 212 + 4);
+
+  let allOff = true;
+  for (let i = 0; i < SWITCH_KEYS.length; i++) { if (ON[SWITCH_KEYS[i]]) { allOff = false; } }
+  if (allOff) {
+    ctx.font = "bold 14px system-ui, sans-serif";
+    ctx.fillStyle = "#6b7480";
+    ctx.fillText("every effect off — the rules are identical", 260, 34);
+  }
+  if (hitstop > 0) {
+    ctx.font = "bold 14px system-ui, sans-serif";
+    ctx.fillStyle = "#ffd43b";
+    ctx.fillText("hitstop", 260, 56);
+  }
+  ctx.font = "12px system-ui, sans-serif";
+  ctx.fillStyle = "#4a5362";
+  ctx.fillText("particles " + particles.length + "   tweens " + tweens.length,
+               canvas.width - 190, canvas.height - 14);
+}
+
+let lastTime = 0;
+function frame(now) {
+  let realDt = (now - lastTime) / 1000;
+  lastTime = now;
+  if (realDt > 0.05) { realDt = 0.05; }
+
+  const t0 = performance.now();
+  update(realDt);
+  draw();
+  recordFrame(performance.now() - t0);
+
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

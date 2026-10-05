@@ -1,0 +1,298 @@
+<!doctype html>
+<!-- ===========================================================================
+     02-pooling-measured.html — the answer to lesson 2's question, measured.
+
+     WHAT THIS DEMONSTRATES
+     Lesson 2 asked whether making thousands of small objects a second matters.
+     This page runs the same particle simulation two ways and TIMES it:
+
+       ALLOCATE   push a new object per particle, splice the dead ones out
+       POOL       a fixed array, reused for ever, nothing ever allocated
+
+     It reports the AVERAGE and the WORST frame time over the last two seconds.
+     The worst is the one that matters: the symptom of allocating is not a slow
+     game, it is a game that drops one frame every couple of seconds.
+
+     Do the measuring BEFORE forming an opinion. That is the real lesson, and it
+     applies to every optimisation you will ever consider.
+
+     HOW TO RUN IT
+     Double-click.
+       Space  switch between ALLOCATE and POOL
+       Up/Dn  change the particle count (100 ... 50000)
+       R      reset the measurements
+
+     WHAT TO CHANGE FIRST
+     Nothing, at first: let both versions run at 2,000 particles and compare. Then
+     go to 20,000 and compare again. Write the two sets of numbers down - your
+     machine's answer is not the same as anybody else's.
+     ======================================================================== -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Pooling, measured</title>
+<style>
+  body { background: #11151c; color: #e7ecf3; font-family: system-ui, sans-serif;
+         display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 16px; }
+  canvas { background: #07090d; border: 2px solid #2b3240; border-radius: 6px; }
+  p { max-width: 650px; font-size: 14.5px; line-height: 1.5; color: #a9b4c4; }
+  b { color: #ffd43b; }
+</style>
+</head>
+<body>
+<h1>Measure it, then decide</h1>
+<canvas id="game" width="700" height="440"></canvas>
+<p><b>Space</b> switches method &middot; <b>&uarr; &darr;</b> particle count &middot;
+   <b>R</b> resets the measurements. Let each setting settle for a few seconds
+   before reading the numbers.</p>
+
+<script>
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+
+const COUNTS = [100, 500, 2000, 5000, 10000, 20000, 50000];
+let countIndex = 2;
+let usePool = false;
+
+const GRAVITY = 260;
+const AREA_TOP = 120;
+
+/* ---------------------------------------------------------------------------
+   VERSION 1: ALLOCATE. A new object per particle, spliced out when it dies.
+   Perfectly normal code. This is what everybody writes first, and it is right
+   until it is not.
+   ------------------------------------------------------------------------ */
+let allocList = [];
+
+function allocSpawn(x, y) {
+  const a = Math.random() * Math.PI * 2;
+  const s = 40 + Math.random() * 160;
+  const life = 0.5 + Math.random() * 1.2;
+  allocList.push({
+    x: x, y: y,
+    vx: Math.cos(a) * s, vy: Math.sin(a) * s,
+    life: life, maxLife: life,
+    size: 2 + Math.random() * 2
+  });
+}
+
+function allocUpdate(dt, target) {
+  while (allocList.length < target) {
+    allocSpawn(canvas.width / 2, (AREA_TOP + canvas.height) / 2);
+  }
+  for (let i = 0; i < allocList.length; i++) {
+    const p = allocList[i];
+    p.vy += GRAVITY * dt;
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
+    p.life -= dt;
+  }
+  for (let i = allocList.length - 1; i >= 0; i--) {
+    if (allocList[i].life <= 0) { allocList.splice(i, 1); }
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   VERSION 2: POOL. Built once, never allocated again. "Spawning" is finding a
+   dead slot and refilling it; "dying" is a flag.
+   ------------------------------------------------------------------------ */
+let pool = [];
+let poolSize = 0;
+let nextFree = 0;          // where to start looking. Saves scanning from 0.
+
+function buildPool(n) {
+  pool = new Array(n);
+  for (let i = 0; i < n; i++) {
+    pool[i] = { x: 0, y: 0, vx: 0, vy: 0, life: 0, maxLife: 1, size: 0, alive: false };
+  }
+  poolSize = n;
+  nextFree = 0;
+}
+
+function poolSpawn(x, y) {
+  /* Scan for a dead slot, starting from where we left off. If the pool is full
+     we DROP the request, which is a feature: it caps the work per frame. */
+  for (let step = 0; step < poolSize; step++) {
+    const i = (nextFree + step) % poolSize;
+    if (!pool[i].alive) {
+      const p = pool[i];
+      const a = Math.random() * Math.PI * 2;
+      const s = 40 + Math.random() * 160;
+      p.x = x; p.y = y;
+      p.vx = Math.cos(a) * s; p.vy = Math.sin(a) * s;
+      p.maxLife = 0.5 + Math.random() * 1.2;
+      p.life = p.maxLife;
+      p.size = 2 + Math.random() * 2;
+      p.alive = true;
+      nextFree = (i + 1) % poolSize;
+      return;
+    }
+  }
+}
+
+function poolUpdate(dt, target) {
+  let alive = 0;
+  for (let i = 0; i < poolSize; i++) { if (pool[i].alive) { alive += 1; } }
+  let want = target - alive;
+  while (want > 0) { poolSpawn(canvas.width / 2, (AREA_TOP + canvas.height) / 2); want -= 1; }
+
+  for (let i = 0; i < poolSize; i++) {
+    const p = pool[i];
+    if (!p.alive) { continue; }
+    p.vy += GRAVITY * dt;
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
+    p.life -= dt;
+    if (p.life <= 0) { p.alive = false; }       /* no splice, no allocation */
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   MEASUREMENT. One reading tells you nothing. Keep the last two seconds and
+   report the average AND the worst.
+   ------------------------------------------------------------------------ */
+const samples = [];
+const SAMPLE_MAX = 120;
+let worst = 0;
+
+function record(ms) {
+  samples.push(ms);
+  if (samples.length > SAMPLE_MAX) { samples.shift(); }
+  if (ms > worst) { worst = ms; }
+}
+function resetMeasurements() {
+  samples.length = 0;
+  worst = 0;
+}
+
+buildPool(COUNTS[countIndex] + 500);
+
+document.addEventListener("keydown", function (e) {
+  if (e.key === " ") { e.preventDefault(); usePool = !usePool; resetMeasurements(); }
+  if (e.key === "ArrowUp") {
+    e.preventDefault();
+    countIndex = Math.min(COUNTS.length - 1, countIndex + 1);
+    buildPool(COUNTS[countIndex] + 500);
+    allocList = [];
+    resetMeasurements();
+  }
+  if (e.key === "ArrowDown") {
+    e.preventDefault();
+    countIndex = Math.max(0, countIndex - 1);
+    buildPool(COUNTS[countIndex] + 500);
+    allocList = [];
+    resetMeasurements();
+  }
+  if (e.key === "r" || e.key === "R") { resetMeasurements(); }
+});
+
+function drawParticles() {
+  ctx.save();
+  if (usePool) {
+    for (let i = 0; i < poolSize; i++) {
+      const p = pool[i];
+      if (!p.alive) { continue; }
+      const t = p.life / p.maxLife;
+      ctx.globalAlpha = t * 0.8;
+      ctx.fillStyle = "#4dabf7";
+      ctx.fillRect(p.x, p.y, p.size, p.size);
+    }
+  } else {
+    for (let i = 0; i < allocList.length; i++) {
+      const p = allocList[i];
+      const t = p.life / p.maxLife;
+      ctx.globalAlpha = t * 0.8;
+      ctx.fillStyle = "#ff9f43";
+      ctx.fillRect(p.x, p.y, p.size, p.size);
+    }
+  }
+  ctx.restore();
+}
+
+function drawReadout() {
+  let total = 0;
+  for (let i = 0; i < samples.length; i++) { total += samples[i]; }
+  const average = samples.length ? total / samples.length : 0;
+  const target = COUNTS[countIndex];
+  const aliveNow = usePool
+    ? (function () { let n = 0; for (let i = 0; i < poolSize; i++) { if (pool[i].alive) { n++; } } return n; }())
+    : allocList.length;
+
+  ctx.fillStyle = "rgba(10,13,18,0.92)";
+  ctx.fillRect(10, 10, 420, 100);
+  ctx.strokeStyle = "#2b3240";
+  ctx.lineWidth = 1;
+  ctx.strokeRect(10, 10, 420, 100);
+
+  ctx.font = "bold 16px system-ui, sans-serif";
+  ctx.fillStyle = usePool ? "#4dabf7" : "#ff9f43";
+  ctx.fillText(usePool ? "POOL — nothing is ever allocated"
+                       : "ALLOCATE — a new object per particle", 22, 34);
+
+  ctx.font = "12.5px ui-monospace, Menlo, monospace";
+  ctx.fillStyle = "#8793a4";
+  ctx.fillText("target particles   " + target.toLocaleString() +
+               "   (alive " + aliveNow.toLocaleString() + ")", 22, 56);
+  ctx.fillStyle = average > 16 ? "#ff6b6b" : "#51cf66";
+  ctx.fillText("average frame      " + average.toFixed(2) + " ms", 22, 76);
+  ctx.fillStyle = worst > 16 ? "#ff6b6b" : "#51cf66";
+  ctx.fillText("WORST frame        " + worst.toFixed(2) +
+               " ms   (a frame has 16.7)", 22, 96);
+
+  /* the frame-time graph: this is where a garbage-collection pause is visible as
+     a single tall spike among flat bars */
+  const GX = 450, GY = 20, GW = 236, GH = 90;
+  ctx.fillStyle = "#0e1319";
+  ctx.fillRect(GX, GY, GW, GH);
+  ctx.strokeStyle = "#2b3240";
+  ctx.strokeRect(GX, GY, GW, GH);
+  const budget = GY + GH - (16.7 / 40) * GH;
+  ctx.strokeStyle = "#f08c00";
+  ctx.setLineDash([3, 3]);
+  ctx.beginPath();
+  ctx.moveTo(GX, budget); ctx.lineTo(GX + GW, budget);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  const bw = GW / SAMPLE_MAX;
+  for (let i = 0; i < samples.length; i++) {
+    const h = Math.min(1, samples[i] / 40) * GH;
+    ctx.fillStyle = samples[i] > 16.7 ? "#ff6b6b" : "#51cf66";
+    ctx.fillRect(GX + i * bw, GY + GH - h, Math.max(1, bw - 0.5), h);
+  }
+  ctx.font = "10.5px system-ui, sans-serif";
+  ctx.fillStyle = "#6b7480";
+  ctx.fillText("frame time, last 2 s   (dashed = 16.7 ms)", GX, GY + GH + 14);
+
+  ctx.font = "12.5px system-ui, sans-serif";
+  ctx.fillStyle = "#a9b4c4";
+  ctx.fillText("Space to switch method   ·   Up/Down for the particle count   ·   R to reset",
+               22, canvas.height - 34);
+  ctx.fillStyle = "#6b7480";
+  ctx.fillText("Watch the WORST figure and the tall spikes, not the average.",
+               22, canvas.height - 14);
+}
+
+let lastTime = 0;
+function frame(now) {
+  let dt = (now - lastTime) / 1000;
+  lastTime = now;
+  if (dt > 0.05) { dt = 0.05; }
+
+  /* Time ONLY the simulation, so the measurement is about the thing being
+     compared and not about drawing. */
+  const t0 = performance.now();
+  if (usePool) { poolUpdate(dt, COUNTS[countIndex]); }
+  else { allocUpdate(dt, COUNTS[countIndex]); }
+  record(performance.now() - t0);
+
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = "#07090d";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  drawParticles();
+  drawReadout();
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

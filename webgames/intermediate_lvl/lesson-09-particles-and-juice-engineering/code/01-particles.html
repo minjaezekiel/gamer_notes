@@ -1,0 +1,256 @@
+<!doctype html>
+<!-- ===========================================================================
+     01-particles.html — one emitter, four effects, every number on a slider.
+
+     WHAT THIS DEMONSTRATES
+     A particle is a position, a velocity and a countdown. Nothing else. The four
+     presets below run EXACTLY the same code with different numbers in it -
+     including smoke, which is dust with negative gravity.
+
+     The one visual trick that matters: multiply alpha and size by
+     t = life / maxLife, so everything fades out in step.
+
+     HOW TO RUN IT
+     Double-click. Click or drag in the dark area to emit.
+       1 2 3 4   explosion / dust / sparks / smoke
+       F         turn the fade off, so you can see what it was doing
+       A         random angle vs random vx,vy (look at the shape of the spray)
+
+     WHAT TO CHANGE FIRST
+     Press 4 for smoke and look at the gravity slider: it is negative. Nothing in
+     the code knows what smoke is.
+     ======================================================================== -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Particles</title>
+<style>
+  body { background: #11151c; color: #e7ecf3; font-family: system-ui, sans-serif;
+         display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 16px; }
+  canvas { background: #07090d; border: 2px solid #2b3240; border-radius: 6px; cursor: crosshair; }
+  #panel { display: grid; grid-template-columns: 160px 180px 70px 160px 180px 70px;
+           gap: 4px 10px; align-items: center; font-size: 12.5px; color: #a9b4c4; }
+  #panel output { font-family: ui-monospace, Menlo, monospace; color: #ffd43b; }
+  #presets { display: flex; gap: 8px; }
+  button { background: #1b2130; color: #e7ecf3; border: 1px solid #2b3240;
+           border-radius: 6px; padding: 7px 12px; font-size: 13.5px; cursor: pointer; }
+  button:hover { background: #253044; }
+  p { max-width: 650px; font-size: 14px; line-height: 1.5; color: #a9b4c4; }
+  b { color: #ffd43b; }
+</style>
+</head>
+<body>
+<h1>One emitter</h1>
+<canvas id="game" width="700" height="330"></canvas>
+<div id="presets">
+  <button data-p="0">1 &mdash; explosion</button>
+  <button data-p="1">2 &mdash; dust</button>
+  <button data-p="2">3 &mdash; sparks</button>
+  <button data-p="3">4 &mdash; smoke</button>
+</div>
+<div id="panel">
+  <span>count per burst</span><input id="count" type="range" min="1" max="200" step="1" value="40"><output id="countO">40</output>
+  <span>speed</span><input id="speed" type="range" min="0" max="500" step="5" value="200"><output id="speedO">200</output>
+  <span>speed spread</span><input id="spread" type="range" min="0" max="400" step="5" value="150"><output id="spreadO">150</output>
+  <span>gravity</span><input id="grav" type="range" min="-600" max="1600" step="20" value="300"><output id="gravO">300</output>
+  <span>life (ms)</span><input id="life" type="range" min="80" max="2500" step="20" value="700"><output id="lifeO">700</output>
+  <span>size</span><input id="size" type="range" min="1" max="20" step="1" value="4"><output id="sizeO">4</output>
+  <span>drag (per s)</span><input id="drag" type="range" min="0" max="8" step="0.1" value="1.2"><output id="dragO">1.2</output>
+  <span>cone (degrees)</span><input id="cone" type="range" min="5" max="360" step="5" value="360"><output id="coneO">360</output>
+</div>
+<p>Click and drag in the dark area. <b>F</b> switches off the fade, <b>A</b> switches
+   between a random angle and random x/y speeds &mdash; look at the shape of the spray.</p>
+
+<script>
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+
+const ui = {}, outs = {};
+["count", "speed", "spread", "grav", "life", "size", "drag", "cone"].forEach(function (k) {
+  ui[k] = document.getElementById(k);
+  outs[k] = document.getElementById(k + "O");
+  ui[k].addEventListener("input", function () { outs[k].textContent = ui[k].value; });
+});
+
+/* The four presets. Same emitter, different numbers. */
+const PRESETS = [
+  { name: "explosion", count: 50, speed: 240, spread: 200, grav: 220, life: 650,
+    size: 5, drag: 1.6, cone: 360, colour: "fire" },
+  { name: "dust",      count: 24, speed: 60,  spread: 50,  grav: 90,  life: 1100,
+    size: 9, drag: 2.4, cone: 120, colour: "grey" },
+  { name: "sparks",    count: 30, speed: 380, spread: 180, grav: 1200, life: 420,
+    size: 3, drag: 0.4, cone: 360, colour: "spark" },
+  { name: "smoke",     count: 18, speed: 40,  spread: 30,  grav: -120, life: 1900,
+    size: 12, drag: 1.0, cone: 70,  colour: "grey" }
+];
+let preset = 0;
+let fade = true;
+let useAngle = true;
+
+function loadPreset(i) {
+  preset = i;
+  const p = PRESETS[i];
+  ui.count.value = p.count; ui.speed.value = p.speed; ui.spread.value = p.spread;
+  ui.grav.value = p.grav;  ui.life.value = p.life;   ui.size.value = p.size;
+  ui.drag.value = p.drag;  ui.cone.value = p.cone;
+  Object.keys(ui).forEach(function (k) { outs[k].textContent = ui[k].value; });
+}
+document.querySelectorAll("#presets button").forEach(function (b) {
+  b.addEventListener("click", function () { loadPreset(Number(b.dataset.p)); });
+});
+loadPreset(0);
+
+const particles = [];
+
+function emit(x, y, aimAngle) {
+  const n = Number(ui.count.value);
+  const speed = Number(ui.speed.value);
+  const spread = Number(ui.spread.value);
+  const life = Number(ui.life.value) / 1000;
+  const size = Number(ui.size.value);
+  const coneRad = Number(ui.cone.value) * Math.PI / 180;
+
+  for (let i = 0; i < n; i++) {
+    let vx, vy;
+    if (useAngle) {
+      /* A RANDOM ANGLE, then cos and sin. This gives an even spread. */
+      const a = aimAngle + (Math.random() - 0.5) * coneRad;
+      const s = speed + Math.random() * spread;
+      vx = Math.cos(a) * s;
+      vy = Math.sin(a) * s;
+    } else {
+      /* Random vx and vy separately: NOT an even spread. Getting a big value in
+         both at once is likelier than in just one, so it bunches on the
+         diagonals. Press A and compare the shape. */
+      const s = speed + Math.random() * spread;
+      vx = (Math.random() * 2 - 1) * s;
+      vy = (Math.random() * 2 - 1) * s;
+    }
+    const maxLife = life * (0.7 + Math.random() * 0.6);
+    particles.push({
+      x: x, y: y, vx: vx, vy: vy,
+      life: maxLife, maxLife: maxLife,
+      size: size * (0.6 + Math.random() * 0.8),
+      seed: Math.random()
+    });
+  }
+}
+
+let mouseDown = false;
+let mouse = { x: 350, y: 165 };
+canvas.addEventListener("mousedown", function (e) {
+  mouseDown = true;
+  const b = canvas.getBoundingClientRect();
+  mouse.x = e.clientX - b.left; mouse.y = e.clientY - b.top;
+  emit(mouse.x, mouse.y, -Math.PI / 2);
+});
+canvas.addEventListener("mousemove", function (e) {
+  const b = canvas.getBoundingClientRect();
+  mouse.x = e.clientX - b.left; mouse.y = e.clientY - b.top;
+});
+window.addEventListener("mouseup", function () { mouseDown = false; });
+
+document.addEventListener("keydown", function (e) {
+  const n = Number(e.key);
+  if (n >= 1 && n <= 4) { loadPreset(n - 1); }
+  if (e.key === "f" || e.key === "F") { fade = !fade; }
+  if (e.key === "a" || e.key === "A") { useAngle = !useAngle; }
+  if (e.key === " ") { e.preventDefault(); emit(350, 180, -Math.PI / 2); }
+});
+
+let emitTimer = 0;
+
+function update(dt) {
+  const grav = Number(ui.grav.value);
+  const drag = Number(ui.drag.value);
+
+  /* hold the mouse down for a continuous stream */
+  if (mouseDown) {
+    emitTimer += dt;
+    while (emitTimer > 0.05) {
+      emitTimer -= 0.05;
+      emit(mouse.x, mouse.y, -Math.PI / 2);
+    }
+  }
+
+  for (let i = 0; i < particles.length; i++) {
+    const p = particles[i];
+    p.vy += grav * dt;                        /* gravity: NEGATIVE makes smoke */
+    const keep = Math.exp(-drag * dt);        /* lesson 3's drag, per second */
+    p.vx *= keep;
+    p.vy *= keep;
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
+    p.life -= dt;
+  }
+
+  /* BACKWARDS. A forward loop with splice skips the next element. */
+  for (let i = particles.length - 1; i >= 0; i--) {
+    if (particles[i].life <= 0) { particles.splice(i, 1); }
+  }
+}
+
+function colourFor(p, t) {
+  const kind = PRESETS[preset].colour;
+  if (kind === "fire") {
+    /* yellow -> red -> dark as it dies: the biggest single improvement to an
+       explosion, and it is one interpolation. */
+    const r = 255;
+    const g = Math.round(40 + 190 * t);
+    const b = Math.round(20 + 40 * t * t);
+    return "rgb(" + r + "," + g + "," + b + ")";
+  }
+  if (kind === "spark") { return t > 0.5 ? "#ffffff" : "#ffd43b"; }
+  const v = Math.round(90 + 90 * (1 - t) + p.seed * 30);
+  return "rgb(" + v + "," + (v + 4) + "," + (v + 10) + ")";
+}
+
+function draw() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = "#07090d";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  ctx.save();
+  for (let i = 0; i < particles.length; i++) {
+    const p = particles[i];
+    const t = p.life / p.maxLife;             /* 1 at birth, 0 at death */
+    ctx.globalAlpha = fade ? t : 1;
+    ctx.fillStyle = colourFor(p, t);
+    const s = fade ? p.size * t : p.size;
+    ctx.fillRect(p.x - s / 2, p.y - s / 2, s, s);
+  }
+  ctx.restore();          /* resets globalAlpha. Without this the text fades too. */
+
+  ctx.font = "bold 14px system-ui, sans-serif";
+  ctx.fillStyle = "#ffd43b";
+  ctx.fillText(PRESETS[preset].name, 16, 26);
+  ctx.font = "12px ui-monospace, Menlo, monospace";
+  ctx.fillStyle = "#8793a4";
+  ctx.fillText("particles alive  " + particles.length, 16, 46);
+  ctx.fillStyle = fade ? "#51cf66" : "#ff6b6b";
+  ctx.fillText("fade (F)         " + (fade ? "on — alpha and size × t" : "OFF"), 16, 64);
+  ctx.fillStyle = useAngle ? "#51cf66" : "#ff6b6b";
+  ctx.fillText("spread (A)       " + (useAngle ? "random angle" : "random vx,vy — diagonals"),
+               16, 82);
+  if (Number(ui.grav.value) < 0) {
+    ctx.fillStyle = "#4dabf7";
+    ctx.fillText("gravity is negative: this is dust falling upwards", 16, 104);
+  }
+  ctx.fillStyle = "#4a5362";
+  ctx.font = "12px system-ui, sans-serif";
+  ctx.fillText("click and drag to emit", 16, canvas.height - 14);
+}
+
+let lastTime = 0;
+function frame(now) {
+  let dt = (now - lastTime) / 1000;
+  lastTime = now;
+  if (dt > 0.05) { dt = 0.05; }
+  update(dt);
+  draw();
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
