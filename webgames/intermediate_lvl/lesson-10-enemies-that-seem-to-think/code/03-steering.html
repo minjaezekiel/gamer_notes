@@ -1,0 +1,278 @@
+<!doctype html>
+<!-- ===========================================================================
+     03-steering.html — seek, flee, arrive, wander, separation.
+
+     WHAT THIS DEMONSTRATES
+     Eight identical chasers. Turn SEPARATION off and they become one enemy: they
+     stack in exactly the same place, because every one of them is running the same
+     correct code towards the same point. The bug is not in any individual.
+
+     Also: ARRIVE (slow down near the target, so they stop instead of orbiting) and
+     WANDER (nudge the angle, never replace it).
+
+     HOW TO RUN IT
+     Double-click. Arrow keys move you, or drag with the mouse.
+       1  seek        2  arrive      3  wander      4  flee
+       S  separation on / off
+       W  wander with = instead of += (the twitch bug)
+
+     WHAT TO CHANGE FIRST
+     Press S with all eight chasing. Then press it again. That one comparison is
+     the point of the file.
+     ======================================================================== -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Steering</title>
+<style>
+  body { background: #11151c; color: #e7ecf3; font-family: system-ui, sans-serif;
+         display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 16px; }
+  canvas { background: #0a0d12; border: 2px solid #2b3240; border-radius: 6px; cursor: crosshair; }
+  #panel { display: grid; grid-template-columns: 180px 190px 70px; gap: 4px 12px;
+           align-items: center; font-size: 13px; color: #a9b4c4; }
+  #panel output { font-family: ui-monospace, Menlo, monospace; color: #ffd43b; }
+  p { max-width: 650px; font-size: 14.5px; line-height: 1.5; color: #a9b4c4; }
+  b { color: #ffd43b; }
+</style>
+</head>
+<body>
+<h1>Eight enemies, or one</h1>
+<canvas id="game" width="700" height="400"></canvas>
+<div id="panel">
+  <span>personal space (px)</span>
+  <input id="space" type="range" min="0" max="120" step="2" value="46"><output id="spaceO">46</output>
+  <span>separation strength</span>
+  <input id="sep" type="range" min="0" max="600" step="10" value="240"><output id="sepO">240</output>
+  <span>slow radius (arrive)</span>
+  <input id="slow" type="range" min="10" max="300" step="10" value="110"><output id="slowO">110</output>
+</div>
+<p><b>1</b> seek &middot; <b>2</b> arrive &middot; <b>3</b> wander &middot; <b>4</b> flee &middot;
+   <b>S</b> separation &middot; <b>W</b> the wander twitch bug.</p>
+
+<script>
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+
+const ui = {}, outs = {};
+["space", "sep", "slow"].forEach(function (k) {
+  ui[k] = document.getElementById(k);
+  outs[k] = document.getElementById(k + "O");
+  ui[k].addEventListener("input", function () { outs[k].textContent = ui[k].value; });
+});
+
+const MODES = ["seek", "arrive", "wander", "flee"];
+let mode = "arrive";
+let separation = true;
+let wanderBug = false;
+
+const player = { x: 350, y: 200, r: 13, speed: 250 };
+const agents = [];
+for (let i = 0; i < 8; i++) {
+  agents.push({
+    x: 60 + (i % 4) * 40, y: 60 + Math.floor(i / 4) * 40,
+    vx: 0, vy: 0,
+    wanderAngle: Math.random() * Math.PI * 2,
+    speed: 130 + (i % 3) * 14
+  });
+}
+
+const keys = {};
+document.addEventListener("keydown", function (e) {
+  keys[e.key] = true;
+  if (e.key.startsWith("Arrow")) { e.preventDefault(); }
+  const n = Number(e.key);
+  if (n >= 1 && n <= 4) { mode = MODES[n - 1]; }
+  if (e.key === "s" || e.key === "S") { separation = !separation; }
+  if (e.key === "w" || e.key === "W") { wanderBug = !wanderBug; }
+});
+document.addEventListener("keyup", function (e) { keys[e.key] = false; });
+canvas.addEventListener("mousemove", function (e) {
+  if (e.buttons !== 1) { return; }
+  const b = canvas.getBoundingClientRect();
+  player.x = e.clientX - b.left;
+  player.y = e.clientY - b.top;
+});
+
+function update(dt) {
+  if (keys["ArrowLeft"])  { player.x -= player.speed * dt; }
+  if (keys["ArrowRight"]) { player.x += player.speed * dt; }
+  if (keys["ArrowUp"])    { player.y -= player.speed * dt; }
+  if (keys["ArrowDown"])  { player.y += player.speed * dt; }
+  player.x = Math.max(14, Math.min(canvas.width - 14, player.x));
+  player.y = Math.max(14, Math.min(canvas.height - 14, player.y));
+
+  const SPACE = Number(ui.space.value);
+  const STRENGTH = Number(ui.sep.value);
+  const SLOW = Number(ui.slow.value);
+
+  for (let i = 0; i < agents.length; i++) {
+    const a = agents[i];
+    let vx = 0, vy = 0;
+
+    const dx = player.x - a.x, dy = player.y - a.y;
+    const dist = Math.hypot(dx, dy);
+
+    if (mode === "wander") {
+      /* NUDGE the angle. `=` instead of `+=` gives a twitching mess, because a
+         brand-new random direction every frame averages to standing still. */
+      if (wanderBug) {
+        a.wanderAngle = (Math.random() - 0.5) * 2.5 * dt;
+      } else {
+        a.wanderAngle += (Math.random() - 0.5) * 3.0 * dt;
+      }
+      vx = Math.cos(a.wanderAngle) * a.speed * 0.7;
+      vy = Math.sin(a.wanderAngle) * a.speed * 0.7;
+    } else if (dist > 0.001) {
+      const ux = dx / dist, uy = dy / dist;          /* normalise */
+      if (mode === "seek") {
+        vx = ux * a.speed;
+        vy = uy * a.speed;
+      } else if (mode === "arrive") {
+        /* ARRIVE: full speed outside the radius, proportionally slower inside it,
+           zero at the target. So they stop instead of orbiting. */
+        let speed = a.speed;
+        if (dist < SLOW) { speed = a.speed * (dist / SLOW); }
+        vx = ux * speed;
+        vy = uy * speed;
+      } else {
+        vx = -ux * a.speed;
+        vy = -uy * a.speed;
+      }
+    }
+
+    /* ---- SEPARATION: three lines, and a stack becomes a pack ---- */
+    if (separation) {
+      let px = 0, py = 0;
+      for (let j = 0; j < agents.length; j++) {
+        if (j === i) { continue; }
+        const ax = a.x - agents[j].x, ay = a.y - agents[j].y;
+        const d = Math.hypot(ax, ay);
+        if (d > 0.001 && d < SPACE) {
+          /* closer means a stronger push */
+          const w = (SPACE - d) / SPACE;
+          px += (ax / d) * w;
+          py += (ay / d) * w;
+        }
+      }
+      vx += px * STRENGTH;
+      vy += py * STRENGTH;
+    }
+
+    a.vx = vx;
+    a.vy = vy;
+    a.x += a.vx * dt;
+    a.y += a.vy * dt;
+    a.x = Math.max(12, Math.min(canvas.width - 12, a.x));
+    a.y = Math.max(12, Math.min(canvas.height - 12, a.y));
+  }
+}
+
+/* How tightly stacked are they? The average distance to the nearest neighbour is
+   an honest single number for "do they look like one enemy?". */
+function averageNearest() {
+  let total = 0;
+  for (let i = 0; i < agents.length; i++) {
+    let best = Infinity;
+    for (let j = 0; j < agents.length; j++) {
+      if (i === j) { continue; }
+      const d = Math.hypot(agents[i].x - agents[j].x, agents[i].y - agents[j].y);
+      if (d < best) { best = d; }
+    }
+    total += best;
+  }
+  return total / agents.length;
+}
+
+function draw() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = "#0f141b";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  if (mode === "arrive") {
+    ctx.strokeStyle = "#2b3240";
+    ctx.setLineDash([5, 5]);
+    ctx.beginPath();
+    ctx.arc(player.x, player.y, Number(ui.slow.value), 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  for (let i = 0; i < agents.length; i++) {
+    const a = agents[i];
+    if (separation) {
+      ctx.strokeStyle = "rgba(122,92,255,0.18)";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.arc(a.x, a.y, Number(ui.space.value) / 2, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    ctx.fillStyle = "#ff6b6b";
+    ctx.beginPath();
+    ctx.arc(a.x, a.y, 11, 0, Math.PI * 2);
+    ctx.fill();
+    const sp = Math.hypot(a.vx, a.vy);
+    if (sp > 5) {
+      ctx.strokeStyle = "#51cf66";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(a.x, a.y);
+      ctx.lineTo(a.x + a.vx * 0.12, a.y + a.vy * 0.12);
+      ctx.stroke();
+    }
+  }
+
+  ctx.fillStyle = "#4dabf7";
+  ctx.beginPath();
+  ctx.arc(player.x, player.y, player.r, 0, Math.PI * 2);
+  ctx.fill();
+
+  const nearest = averageNearest();
+
+  ctx.fillStyle = "rgba(10,13,18,0.92)";
+  ctx.fillRect(10, 10, 272, 116);
+  ctx.strokeStyle = "#2b3240";
+  ctx.lineWidth = 1;
+  ctx.strokeRect(10, 10, 272, 116);
+
+  ctx.font = "bold 14px system-ui, sans-serif";
+  ctx.fillStyle = "#ffd43b";
+  ctx.fillText(mode.toUpperCase() + "   (1-4)", 22, 32);
+
+  ctx.font = "12px ui-monospace, Menlo, monospace";
+  ctx.fillStyle = separation ? "#51cf66" : "#ff6b6b";
+  ctx.fillText("separation (S)   " + (separation ? "ON" : "OFF"), 22, 54);
+  ctx.fillStyle = nearest < 14 ? "#ff6b6b" : "#8793a4";
+  ctx.fillText("avg nearest gap  " + nearest.toFixed(1) + " px", 22, 72);
+  ctx.fillStyle = "#8793a4";
+  ctx.fillText("agents           " + agents.length, 22, 90);
+  if (mode === "wander") {
+    ctx.fillStyle = wanderBug ? "#ff6b6b" : "#51cf66";
+    ctx.fillText("wander (W)       " + (wanderBug ? "= (twitch bug)" : "+= (correct)"), 22, 108);
+  } else {
+    ctx.fillStyle = "#4a5362";
+    ctx.fillText("press 3 for wander", 22, 108);
+  }
+
+  if (!separation && nearest < 16) {
+    ctx.font = "bold 13.5px system-ui, sans-serif";
+    ctx.fillStyle = "#ff6b6b";
+    ctx.fillText("eight enemies are in the same place: they look like one", 300, 32);
+    ctx.font = "12.5px system-ui, sans-serif";
+    ctx.fillStyle = "#a9b4c4";
+    ctx.fillText("every individual is behaving perfectly. Press S.", 300, 52);
+  }
+}
+
+let lastTime = 0;
+function frame(now) {
+  let dt = (now - lastTime) / 1000;
+  lastTime = now;
+  if (dt > 0.05) { dt = 0.05; }
+  update(dt);
+  draw();
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

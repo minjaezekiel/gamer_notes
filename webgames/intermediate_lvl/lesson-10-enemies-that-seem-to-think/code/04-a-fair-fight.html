@@ -1,0 +1,288 @@
+<!doctype html>
+<!-- ===========================================================================
+     04-a-fair-fight.html — four deliberate handicaps.
+
+     WHAT THIS DEMONSTRATES
+     The same enemy, with four handicaps you can switch off:
+
+       reaction time   a delay between noticing and acting
+       telegraph       a visible wind-up before the shot
+       inaccuracy      aim at the player plus a random offset
+       turn rate       a maximum degrees per second
+
+     Switch all four OFF and the enemy is unbeatable. Switch them on and the fight
+     becomes winnable - and more interesting. Every one of them makes the enemy
+     WORSE at its job and the game BETTER.
+
+     HOW TO RUN IT
+     Double-click. Arrow keys to dodge. You win by surviving 20 seconds.
+       1  reaction time    2  telegraph    3  inaccuracy    4  turn rate
+       P  perfect enemy (all four off)     F  fair enemy (all four on)
+       R  restart
+
+     WHAT TO CHANGE FIRST
+     Press P. Try to survive. Then press F and try again. Then ask yourself which
+     single handicap mattered most - and check by turning just that one off.
+     ======================================================================== -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>A fair fight</title>
+<style>
+  body { background: #11151c; color: #e7ecf3; font-family: system-ui, sans-serif;
+         display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 16px; }
+  canvas { background: #0a0d12; border: 2px solid #2b3240; border-radius: 6px; }
+  p { max-width: 650px; font-size: 14.5px; line-height: 1.5; color: #a9b4c4; }
+  b { color: #ffd43b; }
+</style>
+</head>
+<body>
+<h1>Worse enemy, better game</h1>
+<canvas id="game" width="700" height="440"></canvas>
+<p>Arrows dodge &middot; survive 20 seconds &middot; <b>1 2 3 4</b> individual handicaps &middot;
+   <b>P</b> perfect &middot; <b>F</b> fair &middot; <b>R</b> restart.</p>
+
+<script>
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+
+const HANDICAP = { reaction: true, telegraph: true, inaccuracy: true, turnRate: true };
+const KEYS = ["reaction", "telegraph", "inaccuracy", "turnRate"];
+
+const REACTION_TIME = 0.32;      // seconds between noticing and acting
+const TELEGRAPH_TIME = 0.55;     // seconds of visible wind-up
+const INACCURACY = 0.22;         // radians of random aim error
+const MAX_TURN = 2.2;            // radians per second
+const FIRE_GAP = 1.1;            // seconds between shots
+const BULLET_SPEED = 300;
+const SURVIVE_FOR = 20;
+
+const player = { x: 200, y: 300, r: 12, speed: 260, hits: 0 };
+const enemy = { x: 520, y: 150, r: 16, angle: Math.PI, noticed: 0,
+                cooldown: 1.2, telegraph: 0, aimAngle: Math.PI };
+let bullets = [];
+let elapsed = 0;
+let outcome = "";
+
+const keys = {};
+document.addEventListener("keydown", function (e) {
+  keys[e.key] = true;
+  if (e.key.startsWith("Arrow")) { e.preventDefault(); }
+  const n = Number(e.key);
+  if (n >= 1 && n <= 4) { HANDICAP[KEYS[n - 1]] = !HANDICAP[KEYS[n - 1]]; }
+  if (e.key === "p" || e.key === "P") { KEYS.forEach(function (k) { HANDICAP[k] = false; }); restart(); }
+  if (e.key === "f" || e.key === "F") { KEYS.forEach(function (k) { HANDICAP[k] = true; }); restart(); }
+  if (e.key === "r" || e.key === "R") { restart(); }
+});
+document.addEventListener("keyup", function (e) { keys[e.key] = false; });
+
+function restart() {
+  player.x = 200; player.y = 300; player.hits = 0;
+  enemy.x = 520; enemy.y = 150; enemy.angle = Math.PI;
+  enemy.noticed = 0; enemy.cooldown = 1.2; enemy.telegraph = 0;
+  bullets = [];
+  elapsed = 0;
+  outcome = "";
+}
+
+/* Turn towards a target angle at a maximum rate, taking the short way round.
+   The wrap into -PI..PI is what stops it turning the long way at 359 degrees. */
+function turnTowards(current, target, maxStep) {
+  let diff = target - current;
+  while (diff > Math.PI) { diff -= Math.PI * 2; }
+  while (diff < -Math.PI) { diff += Math.PI * 2; }
+  if (Math.abs(diff) <= maxStep) { return target; }
+  return current + Math.sign(diff) * maxStep;
+}
+
+function update(dt) {
+  if (outcome) { return; }
+  elapsed += dt;
+  if (elapsed >= SURVIVE_FOR) { outcome = "survived"; return; }
+
+  if (keys["ArrowLeft"])  { player.x -= player.speed * dt; }
+  if (keys["ArrowRight"]) { player.x += player.speed * dt; }
+  if (keys["ArrowUp"])    { player.y -= player.speed * dt; }
+  if (keys["ArrowDown"])  { player.y += player.speed * dt; }
+  player.x = Math.max(14, Math.min(canvas.width - 14, player.x));
+  player.y = Math.max(14, Math.min(canvas.height - 14, player.y));
+
+  /* ---- HANDICAP 1: reaction time ----
+     The enemy has noticed the player, and waits before doing anything about it.
+     Without this it responds within a single frame, which no player can beat. */
+  enemy.noticed += dt;
+  const ready = HANDICAP.reaction ? enemy.noticed > REACTION_TIME : true;
+
+  const toPlayer = Math.atan2(player.y - enemy.y, player.x - enemy.x);
+
+  /* ---- HANDICAP 4: turn rate ----
+     A maximum degrees per second, so the player can move round it faster than it
+     can follow. That is a skill the player can learn. */
+  if (HANDICAP.turnRate) {
+    enemy.angle = turnTowards(enemy.angle, toPlayer, MAX_TURN * dt);
+  } else {
+    enemy.angle = toPlayer;
+  }
+
+  /* drift towards the player, slowly, so it is not a stationary turret */
+  const dx = player.x - enemy.x, dy = player.y - enemy.y;
+  const len = Math.hypot(dx, dy) || 1;
+  if (len > 180) {
+    enemy.x += (dx / len) * 60 * dt;
+    enemy.y += (dy / len) * 60 * dt;
+  }
+
+  /* ---- HANDICAP 2: telegraph ----
+     A visible wind-up. The player can see the shot coming and move. Without it
+     the bullet simply appears, and being hit feels arbitrary. */
+  enemy.cooldown -= dt;
+  if (enemy.telegraph > 0) {
+    enemy.telegraph -= dt;
+    if (enemy.telegraph <= 0) { fire(); }
+  } else if (ready && enemy.cooldown <= 0) {
+    if (HANDICAP.telegraph) {
+      enemy.telegraph = TELEGRAPH_TIME;
+      /* The aim is locked in NOW, at the start of the wind-up, so moving during
+         it actually works. Aiming when the shot leaves would make the telegraph
+         decorative. */
+      enemy.aimAngle = enemy.angle;
+    } else {
+      enemy.aimAngle = enemy.angle;
+      fire();
+    }
+  }
+
+  for (let i = 0; i < bullets.length; i++) {
+    const b = bullets[i];
+    b.x += b.vx * dt;
+    b.y += b.vy * dt;
+  }
+  for (let i = bullets.length - 1; i >= 0; i--) {
+    const b = bullets[i];
+    if (b.x < -20 || b.x > canvas.width + 20 || b.y < -20 || b.y > canvas.height + 20) {
+      bullets.splice(i, 1);
+      continue;
+    }
+    if (Math.hypot(b.x - player.x, b.y - player.y) < player.r + 4) {
+      bullets.splice(i, 1);
+      player.hits += 1;
+      if (player.hits >= 3) { outcome = "hit"; }
+    }
+  }
+}
+
+function fire() {
+  enemy.cooldown = FIRE_GAP;
+  /* ---- HANDICAP 3: inaccuracy ----
+     Aim at the player, plus a small random error. Perfect aim is unbeatable and
+     reads to a player as the game cheating. */
+  const error = HANDICAP.inaccuracy ? (Math.random() - 0.5) * 2 * INACCURACY : 0;
+  const a = enemy.aimAngle + error;
+  bullets.push({ x: enemy.x + Math.cos(a) * 20, y: enemy.y + Math.sin(a) * 20,
+                 vx: Math.cos(a) * BULLET_SPEED, vy: Math.sin(a) * BULLET_SPEED });
+}
+
+function draw() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = "#0f141b";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  /* the telegraph: a thickening line along the locked-in aim */
+  if (enemy.telegraph > 0) {
+    const k = 1 - enemy.telegraph / TELEGRAPH_TIME;
+    ctx.strokeStyle = "rgba(255,107,107," + (0.25 + 0.6 * k).toFixed(2) + ")";
+    ctx.lineWidth = 1 + k * 5;
+    ctx.beginPath();
+    ctx.moveTo(enemy.x, enemy.y);
+    ctx.lineTo(enemy.x + Math.cos(enemy.aimAngle) * 700,
+               enemy.y + Math.sin(enemy.aimAngle) * 700);
+    ctx.stroke();
+  }
+
+  ctx.fillStyle = "#ff6b6b";
+  ctx.beginPath();
+  ctx.arc(enemy.x, enemy.y, enemy.r, 0, Math.PI * 2);
+  ctx.fill();
+  /* the barrel, so its facing is readable */
+  ctx.strokeStyle = "#ffd43b";
+  ctx.lineWidth = 4;
+  ctx.beginPath();
+  ctx.moveTo(enemy.x, enemy.y);
+  ctx.lineTo(enemy.x + Math.cos(enemy.angle) * 26, enemy.y + Math.sin(enemy.angle) * 26);
+  ctx.stroke();
+
+  ctx.fillStyle = "#ffd43b";
+  for (let i = 0; i < bullets.length; i++) {
+    ctx.beginPath();
+    ctx.arc(bullets[i].x, bullets[i].y, 4, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  ctx.fillStyle = "#4dabf7";
+  ctx.beginPath();
+  ctx.arc(player.x, player.y, player.r, 0, Math.PI * 2);
+  ctx.fill();
+
+  /* ---- the panel ---- */
+  ctx.fillStyle = "rgba(10,13,18,0.92)";
+  ctx.fillRect(10, 10, 268, 140);
+  ctx.strokeStyle = "#2b3240";
+  ctx.lineWidth = 1;
+  ctx.strokeRect(10, 10, 268, 140);
+
+  let allOff = true, allOn = true;
+  for (let i = 0; i < KEYS.length; i++) {
+    if (HANDICAP[KEYS[i]]) { allOff = false; } else { allOn = false; }
+  }
+
+  ctx.font = "bold 13.5px system-ui, sans-serif";
+  ctx.fillStyle = allOff ? "#ff6b6b" : (allOn ? "#51cf66" : "#ffd43b");
+  ctx.fillText(allOff ? "PERFECT ENEMY (unbeatable)"
+                      : (allOn ? "FAIR ENEMY" : "PARTLY HANDICAPPED"), 22, 32);
+
+  ctx.font = "12px ui-monospace, Menlo, monospace";
+  const labels = ["1 reaction time", "2 telegraph", "3 inaccuracy", "4 turn rate"];
+  for (let i = 0; i < KEYS.length; i++) {
+    ctx.fillStyle = HANDICAP[KEYS[i]] ? "#51cf66" : "#6b7480";
+    ctx.fillText((HANDICAP[KEYS[i]] ? "[x] " : "[ ] ") + labels[i], 22, 54 + i * 18);
+  }
+  ctx.fillStyle = "#8793a4";
+  ctx.fillText("hits taken  " + player.hits + " / 3", 22, 130);
+  ctx.fillText("survived    " + elapsed.toFixed(1) + " / " + SURVIVE_FOR + " s", 22, 146);
+
+  if (outcome) {
+    ctx.textAlign = "center";
+    ctx.font = "bold 32px system-ui, sans-serif";
+    ctx.fillStyle = outcome === "survived" ? "#51cf66" : "#ff6b6b";
+    ctx.fillText(outcome === "survived" ? "SURVIVED" : "HIT THREE TIMES",
+                 canvas.width / 2, 200);
+    ctx.font = "15px system-ui, sans-serif";
+    ctx.fillStyle = "#a9b4c4";
+    ctx.fillText("press R to try again", canvas.width / 2, 232);
+    if (outcome === "hit" && allOff) {
+      ctx.font = "13.5px system-ui, sans-serif";
+      ctx.fillStyle = "#ffd43b";
+      ctx.fillText("could you have done anything differently? press F", canvas.width / 2, 262);
+    }
+    ctx.textAlign = "left";
+  }
+
+  ctx.font = "12px system-ui, sans-serif";
+  ctx.fillStyle = "#4a5362";
+  ctx.fillText("every handicap makes the enemy worse at its job and the game better to play",
+               22, canvas.height - 14);
+}
+
+let lastTime = 0;
+function frame(now) {
+  let dt = (now - lastTime) / 1000;
+  lastTime = now;
+  if (dt > 0.05) { dt = 0.05; }
+  update(dt);
+  draw();
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

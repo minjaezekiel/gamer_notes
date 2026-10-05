@@ -1,0 +1,260 @@
+<!doctype html>
+<!-- ===========================================================================
+     01-states-and-hysteresis.html — decide, act, and the two thresholds.
+
+     WHAT THIS DEMONSTRATES
+       * decide() and act() as separate functions, so adding a behaviour touches
+         nothing that already works
+       * patrol / chase / flee as ONE value, not three booleans
+       * what happens with ONE threshold instead of two: stand at the edge of the
+         guard's vision and watch the state-change counter run away
+
+     HOW TO RUN IT
+     Double-click. Arrow keys move you.
+       H  one threshold (the bug) / two thresholds
+       [ ]  make the guard weaker / stronger (its health drives the flee state)
+       D  draw what the guard knows
+
+     WHAT TO CHANGE FIRST
+     Press H, then stand so that the distance readout hovers around the sight
+     radius and move a pixel at a time. Watch "state changes" climb.
+     ======================================================================== -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>States and hysteresis</title>
+<style>
+  body { background: #11151c; color: #e7ecf3; font-family: system-ui, sans-serif;
+         display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 16px; }
+  canvas { background: #0a0d12; border: 2px solid #2b3240; border-radius: 6px; }
+  p { max-width: 650px; font-size: 14.5px; line-height: 1.5; color: #a9b4c4; }
+  b { color: #ffd43b; }
+</style>
+</head>
+<body>
+<h1>One value, three behaviours</h1>
+<canvas id="game" width="700" height="430"></canvas>
+<p>Arrows move &middot; <b>H</b> switches to a single threshold &middot;
+   <b>[ ]</b> change the guard's health &middot; <b>D</b> debug drawing.</p>
+
+<script>
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+
+const SIGHT = 170;
+const GAP = 70;                 // the hysteresis band
+const PATROL_A = 120, PATROL_B = 520, PATROL_Y = 330;
+
+const player = { x: 350, y: 220, r: 13, speed: 250 };
+const guard = {
+  x: PATROL_A, y: PATROL_Y,
+  mode: "patrol",               // ONE value. Not three booleans.
+  dir: 1,
+  hp: 100,
+  reaction: 0,                  // used in 04; here it stays 0
+  changes: 0,
+  lastChangeFrame: -99
+};
+
+let oneThreshold = false;
+let showDebug = true;
+let frameCount = 0;
+let dist = 0;
+
+const keys = {};
+document.addEventListener("keydown", function (e) {
+  keys[e.key] = true;
+  if (e.key.startsWith("Arrow")) { e.preventDefault(); }
+  if (e.key === "h" || e.key === "H") { oneThreshold = !oneThreshold; guard.changes = 0; }
+  if (e.key === "d" || e.key === "D") { showDebug = !showDebug; }
+  if (e.key === "]") { guard.hp = Math.min(100, guard.hp + 10); }
+  if (e.key === "[") { guard.hp = Math.max(0, guard.hp - 10); }
+});
+document.addEventListener("keyup", function (e) { keys[e.key] = false; });
+
+/* =========================================================================
+   DECIDE. Nothing in here moves anything.
+   ====================================================================== */
+function decide() {
+  const before = guard.mode;
+  dist = Math.hypot(player.x - guard.x, player.y - guard.y);
+
+  if (guard.hp < 30 && dist < SIGHT + GAP) {
+    guard.mode = "flee";
+  } else if (oneThreshold) {
+    /* THE BUG: one number for both directions. A player sitting exactly on the
+       boundary pushes the guard in and out of chase every single frame. */
+    guard.mode = dist < SIGHT ? "chase" : "patrol";
+    if (guard.hp < 30 && dist < SIGHT) { guard.mode = "flee"; }
+  } else {
+    /* TWO THRESHOLDS. Entering uses SIGHT; leaving uses SIGHT + GAP. The band
+       between them is how much wobble the guard tolerates. */
+    if (guard.mode === "patrol" && dist < SIGHT) { guard.mode = "chase"; }
+    else if (guard.mode === "chase" && dist > SIGHT + GAP) { guard.mode = "patrol"; }
+    else if (guard.mode === "flee" && guard.hp >= 30) { guard.mode = "patrol"; }
+  }
+
+  if (guard.mode !== before) {
+    guard.changes += 1;
+    guard.lastChangeFrame = frameCount;
+  }
+}
+
+/* =========================================================================
+   ACT. One branch per state, and none of them knows what the others do.
+   ====================================================================== */
+function act(dt) {
+  if (guard.mode === "patrol") {
+    guard.x += guard.dir * 90 * dt;
+    if (guard.x > PATROL_B) { guard.x = PATROL_B; guard.dir = -1; }
+    if (guard.x < PATROL_A) { guard.x = PATROL_A; guard.dir = 1; }
+    guard.y += (PATROL_Y - guard.y) * (1 - Math.exp(-3 * dt));
+  } else if (guard.mode === "chase") {
+    moveTowards(player.x, player.y, 140, dt);
+  } else {
+    moveTowards(2 * guard.x - player.x, 2 * guard.y - player.y, 190, dt);
+  }
+  guard.x = Math.max(20, Math.min(canvas.width - 20, guard.x));
+  guard.y = Math.max(20, Math.min(canvas.height - 20, guard.y));
+}
+
+function moveTowards(tx, ty, speed, dt) {
+  const dx = tx - guard.x, dy = ty - guard.y;
+  const len = Math.hypot(dx, dy);
+  if (len < 1) { return; }                  /* the zero-length guard */
+  guard.x += (dx / len) * speed * dt;
+  guard.y += (dy / len) * speed * dt;
+}
+
+function update(dt) {
+  frameCount += 1;
+
+  if (keys["ArrowLeft"])  { player.x -= player.speed * dt; }
+  if (keys["ArrowRight"]) { player.x += player.speed * dt; }
+  if (keys["ArrowUp"])    { player.y -= player.speed * dt; }
+  if (keys["ArrowDown"])  { player.y += player.speed * dt; }
+  player.x = Math.max(14, Math.min(canvas.width - 14, player.x));
+  player.y = Math.max(14, Math.min(canvas.height - 14, player.y));
+
+  decide();
+  act(dt);
+}
+
+function modeColour() {
+  if (guard.mode === "chase") { return "#ff6b6b"; }
+  if (guard.mode === "flee") { return "#ffd43b"; }
+  return "#51cf66";
+}
+
+function draw() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = "#0f141b";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  if (showDebug) {
+    /* the patrol route */
+    ctx.strokeStyle = "#232c38";
+    ctx.setLineDash([6, 6]);
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(PATROL_A, PATROL_Y); ctx.lineTo(PATROL_B, PATROL_Y);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    /* the two radii: this picture IS the lesson */
+    ctx.strokeStyle = "#f08c00";
+    ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.arc(guard.x, guard.y, SIGHT, 0, Math.PI * 2); ctx.stroke();
+    if (!oneThreshold) {
+      ctx.strokeStyle = "#4a5362";
+      ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.arc(guard.x, guard.y, SIGHT + GAP, 0, Math.PI * 2); ctx.stroke();
+    }
+    ctx.font = "11px system-ui, sans-serif";
+    ctx.fillStyle = "#f08c00";
+    ctx.fillText("notices you", guard.x + SIGHT * 0.66, guard.y - SIGHT * 0.72);
+    if (!oneThreshold) {
+      ctx.fillStyle = "#6b7480";
+      ctx.fillText("gives up", guard.x + (SIGHT + GAP) * 0.7, guard.y - (SIGHT + GAP) * 0.74);
+    }
+
+    /* the one number every rule tests */
+    ctx.strokeStyle = "#394252";
+    ctx.setLineDash([3, 4]);
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(guard.x, guard.y); ctx.lineTo(player.x, player.y);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  ctx.fillStyle = modeColour();
+  ctx.beginPath();
+  ctx.arc(guard.x, guard.y, 15, 0, Math.PI * 2);
+  ctx.fill();
+
+  /* health bar, because the flee rule reads it */
+  ctx.fillStyle = "#2b3240";
+  ctx.fillRect(guard.x - 22, guard.y + 22, 44, 7);
+  ctx.fillStyle = guard.hp < 30 ? "#ff6b6b" : "#51cf66";
+  ctx.fillRect(guard.x - 22, guard.y + 22, 44 * (guard.hp / 100), 7);
+
+  ctx.font = "bold 12px system-ui, sans-serif";
+  ctx.fillStyle = modeColour();
+  ctx.fillText(guard.mode.toUpperCase(), guard.x - 22, guard.y - 22);
+
+  ctx.fillStyle = "#4dabf7";
+  ctx.beginPath();
+  ctx.arc(player.x, player.y, player.r, 0, Math.PI * 2);
+  ctx.fill();
+
+  /* ---- the readout ---- */
+  ctx.fillStyle = "rgba(10,13,18,0.92)";
+  ctx.fillRect(10, 10, 300, 134);
+  ctx.strokeStyle = "#2b3240";
+  ctx.lineWidth = 1;
+  ctx.strokeRect(10, 10, 300, 134);
+
+  ctx.font = "bold 13.5px system-ui, sans-serif";
+  ctx.fillStyle = oneThreshold ? "#ff6b6b" : "#51cf66";
+  ctx.fillText(oneThreshold ? "ONE THRESHOLD (press H)" : "TWO THRESHOLDS (press H)", 22, 32);
+
+  ctx.font = "12px ui-monospace, Menlo, monospace";
+  ctx.fillStyle = "#8793a4";
+  ctx.fillText("distance        " + Math.round(dist), 22, 54);
+  ctx.fillText("chase under     " + SIGHT, 22, 72);
+  ctx.fillText("give up over    " + (oneThreshold ? SIGHT : SIGHT + GAP), 22, 90);
+  ctx.fillStyle = "#8793a4";
+  ctx.fillText("guard hp        " + guard.hp + "   ([ ])", 22, 108);
+  const flickering = frameCount - guard.lastChangeFrame < 6 && guard.changes > 6;
+  ctx.fillStyle = flickering ? "#ff6b6b" : "#8793a4";
+  ctx.fillText("state changes   " + guard.changes, 22, 126);
+
+  if (flickering) {
+    ctx.font = "bold 13.5px system-ui, sans-serif";
+    ctx.fillStyle = "#ff6b6b";
+    ctx.fillText("the guard is changing its mind several times a second", 330, 32);
+    ctx.font = "12.5px system-ui, sans-serif";
+    ctx.fillStyle = "#a9b4c4";
+    ctx.fillText("nothing in the code looks wrong — it is one number used twice", 330, 52);
+  }
+
+  ctx.font = "12px system-ui, sans-serif";
+  ctx.fillStyle = "#4a5362";
+  ctx.fillText("decide() changes the mode.  act() does the moving.  Neither does the other.",
+               22, canvas.height - 14);
+}
+
+let lastTime = 0;
+function frame(now) {
+  let dt = (now - lastTime) / 1000;
+  lastTime = now;
+  if (dt > 0.05) { dt = 0.05; }
+  update(dt);
+  draw();
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

@@ -1,0 +1,267 @@
+<!doctype html>
+<!-- ===========================================================================
+     02-line-of-sight.html — an enemy that cannot see through walls.
+
+     WHAT THIS DEMONSTRATES
+       * the ray: walk the line between two points in small steps and ask the
+         tilemap whether each step is solid
+       * why the step must be SMALLER THAN A TILE - put the slider on 3 tiles and
+         watch the guard see through a wall, sometimes
+       * a vision cone from one dot product
+       * the cost, counted: tile lookups this frame, and per second
+
+     HOW TO RUN IT
+     Double-click. Arrow keys move you; the guard rotates to look around.
+       S  step size (cycles 8, 16, 32, 96 px)
+       C  vision cone on / off
+       R  draw the ray's sample points
+
+     WHAT TO CHANGE FIRST
+     Set the step to 96 (3 tiles) and walk slowly along the far side of a
+     one-tile wall. The guard sees you through it at some angles and not others,
+     which is the most annoying kind of bug there is.
+     ======================================================================== -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Line of sight</title>
+<style>
+  body { background: #11151c; color: #e7ecf3; font-family: system-ui, sans-serif;
+         display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 16px; }
+  canvas { background: #0a0d12; border: 2px solid #2b3240; border-radius: 6px; }
+  p { max-width: 650px; font-size: 14.5px; line-height: 1.5; color: #a9b4c4; }
+  b { color: #ffd43b; }
+</style>
+</head>
+<body>
+<h1>Walk the line</h1>
+<canvas id="game" width="700" height="440"></canvas>
+<p>Arrows move &middot; <b>S</b> step size &middot; <b>C</b> vision cone &middot;
+   <b>R</b> show the ray's sample points. Hide behind a wall.</p>
+
+<script>
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+
+const TILE = 32;
+const MAP = [
+  "######################",
+  "#....................#",
+  "#..####....#####.....#",
+  "#.....#........#.....#",
+  "#.....#...#....#.....#",
+  "#.........#..........#",
+  "#..#####..#...####...#",
+  "#.....................",
+  "#..#......#####....#.#",
+  "#..#...............#.#",
+  "#..#################.#",
+  "#....................#",
+  "######################"
+];
+const COLS = MAP[0].length, ROWS = MAP.length;
+const SIGHT = 240;
+const STEPS = [8, 16, 32, 96];
+let stepIndex = 1;
+let useCone = true;
+let showSamples = true;
+
+function isSolid(col, row) {
+  if (col < 0 || row < 0 || row >= ROWS || col >= COLS) { return true; }
+  return MAP[row].charAt(col) === "#";
+}
+
+const player = { x: TILE * 17, y: TILE * 4, r: 11, speed: 230 };
+const guard = { x: TILE * 3.5, y: TILE * 8.5, angle: 0, sees: false };
+
+let lookups = 0;
+let lookupsPerSecond = 0;
+let lookupAccum = 0;
+let secondTimer = 0;
+const samplePoints = [];
+
+const keys = {};
+document.addEventListener("keydown", function (e) {
+  keys[e.key] = true;
+  if (e.key.startsWith("Arrow")) { e.preventDefault(); }
+  if (e.key === "s" || e.key === "S") { stepIndex = (stepIndex + 1) % STEPS.length; }
+  if (e.key === "c" || e.key === "C") { useCone = !useCone; }
+  if (e.key === "r" || e.key === "R") { showSamples = !showSamples; }
+});
+document.addEventListener("keyup", function (e) { keys[e.key] = false; });
+
+/* ---------------------------------------------------------------------------
+   THE RAY. Twelve lines, and enemies stop cheating.
+   ------------------------------------------------------------------------ */
+function canSee(fromX, fromY, toX, toY) {
+  samplePoints.length = 0;
+  const dx = toX - fromX, dy = toY - fromY;
+  const distance = Math.hypot(dx, dy);
+  if (distance > SIGHT) { return false; }
+
+  const STEP = STEPS[stepIndex];
+  const ux = dx / distance, uy = dy / distance;      /* normalise */
+  const steps = Math.floor(distance / STEP);
+
+  for (let i = 1; i < steps; i++) {
+    const px = fromX + ux * i * STEP;
+    const py = fromY + uy * i * STEP;
+    const col = Math.floor(px / TILE);
+    const row = Math.floor(py / TILE);
+    lookups += 1;
+    samplePoints.push({ x: px, y: py, solid: isSolid(col, row) });
+    if (isSolid(col, row)) { return false; }
+  }
+  return true;
+}
+
+function update(dt) {
+  if (keys["ArrowLeft"])  { player.x -= player.speed * dt; }
+  if (keys["ArrowRight"]) { player.x += player.speed * dt; }
+  if (keys["ArrowUp"])    { player.y -= player.speed * dt; }
+  if (keys["ArrowDown"])  { player.y += player.speed * dt; }
+
+  /* keep the player out of walls, using lesson 5's two-step move (simplified:
+     just push back out on whichever axis is in a wall) */
+  const r = 10;
+  if (isSolid(Math.floor((player.x - r) / TILE), Math.floor(player.y / TILE)) ||
+      isSolid(Math.floor((player.x + r) / TILE), Math.floor(player.y / TILE))) {
+    if (keys["ArrowLeft"])  { player.x += player.speed * dt; }
+    if (keys["ArrowRight"]) { player.x -= player.speed * dt; }
+  }
+  if (isSolid(Math.floor(player.x / TILE), Math.floor((player.y - r) / TILE)) ||
+      isSolid(Math.floor(player.x / TILE), Math.floor((player.y + r) / TILE))) {
+    if (keys["ArrowUp"])   { player.y += player.speed * dt; }
+    if (keys["ArrowDown"]) { player.y -= player.speed * dt; }
+  }
+
+  lookups = 0;
+
+  const visible = canSee(guard.x, guard.y, player.x, player.y);
+
+  /* the cone, from one dot product */
+  let inCone = true;
+  if (useCone) {
+    const dx = player.x - guard.x, dy = player.y - guard.y;
+    const len = Math.hypot(dx, dy) || 1;
+    const fx = Math.cos(guard.angle), fy = Math.sin(guard.angle);
+    inCone = (fx * (dx / len) + fy * (dy / len)) > 0.7;      /* ±45° */
+  }
+  guard.sees = visible && inCone;
+
+  if (guard.sees) {
+    guard.angle = Math.atan2(player.y - guard.y, player.x - guard.x);
+  } else {
+    guard.angle += 0.7 * dt;                                 /* sweep, looking */
+  }
+
+  lookupAccum += lookups;
+  secondTimer += dt;
+  if (secondTimer >= 1) {
+    lookupsPerSecond = lookupAccum;
+    lookupAccum = 0;
+    secondTimer = 0;
+  }
+}
+
+function draw() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  for (let row = 0; row < ROWS; row++) {
+    for (let col = 0; col < COLS; col++) {
+      ctx.fillStyle = isSolid(col, row) ? "#3c4756" : "#121820";
+      ctx.fillRect(col * TILE, row * TILE, TILE, TILE);
+      ctx.strokeStyle = "#171d26";
+      ctx.lineWidth = 1;
+      ctx.strokeRect(col * TILE, row * TILE, TILE, TILE);
+    }
+  }
+
+  /* the cone */
+  if (useCone) {
+    const half = Math.acos(0.7);
+    ctx.fillStyle = guard.sees ? "rgba(255,107,107,0.16)" : "rgba(77,171,247,0.12)";
+    ctx.beginPath();
+    ctx.moveTo(guard.x, guard.y);
+    ctx.arc(guard.x, guard.y, SIGHT, guard.angle - half, guard.angle + half);
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  /* the ray */
+  ctx.strokeStyle = guard.sees ? "#51cf66" : "#ff6b6b";
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(guard.x, guard.y);
+  ctx.lineTo(player.x, player.y);
+  ctx.stroke();
+
+  if (showSamples) {
+    for (let i = 0; i < samplePoints.length; i++) {
+      const s = samplePoints[i];
+      ctx.fillStyle = s.solid ? "#ff6b6b" : "#ffd43b";
+      ctx.beginPath();
+      ctx.arc(s.x, s.y, s.solid ? 5 : 3, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  ctx.fillStyle = guard.sees ? "#ff6b6b" : "#4dabf7";
+  ctx.beginPath();
+  ctx.arc(guard.x, guard.y, 13, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#e7ecf3";
+  ctx.beginPath();
+  ctx.arc(player.x, player.y, player.r, 0, Math.PI * 2);
+  ctx.fill();
+
+  /* ---- readout ---- */
+  ctx.fillStyle = "rgba(10,13,18,0.92)";
+  ctx.fillRect(canvas.width - 262, 10, 252, 136);
+  ctx.strokeStyle = "#2b3240";
+  ctx.lineWidth = 1;
+  ctx.strokeRect(canvas.width - 262, 10, 252, 136);
+  const px = canvas.width - 250;
+
+  ctx.font = "bold 14px system-ui, sans-serif";
+  ctx.fillStyle = guard.sees ? "#ff6b6b" : "#51cf66";
+  ctx.fillText(guard.sees ? "SEES YOU" : "cannot see you", px, 32);
+
+  ctx.font = "12px ui-monospace, Menlo, monospace";
+  const step = STEPS[stepIndex];
+  ctx.fillStyle = step > TILE ? "#ff6b6b" : "#8793a4";
+  ctx.fillText("step size   " + step + " px" + (step > TILE ? "  TOO BIG" : ""), px, 54);
+  ctx.fillStyle = "#8793a4";
+  ctx.fillText("tile size   " + TILE + " px", px, 72);
+  ctx.fillText("samples     " + samplePoints.length, px, 90);
+  ctx.fillText("lookups/s   " + lookupsPerSecond.toLocaleString(), px, 108);
+  ctx.fillStyle = useCone ? "#51cf66" : "#6b7480";
+  ctx.fillText("cone (C)    " + (useCone ? "on, +/-45 deg" : "off, sees all round"), px, 126);
+  ctx.fillStyle = "#6b7480";
+  ctx.fillText("step (S)", px, 142);
+
+  if (step > TILE) {
+    ctx.font = "bold 13px system-ui, sans-serif";
+    ctx.fillStyle = "#ff6b6b";
+    ctx.fillText("the ray can step straight over a one-tile wall", 14, canvas.height - 14);
+  } else {
+    ctx.font = "12px system-ui, sans-serif";
+    ctx.fillStyle = "#4a5362";
+    ctx.fillText("yellow dots are clear samples; a red one blocked the ray",
+                 14, canvas.height - 14);
+  }
+}
+
+let lastTime = 0;
+function frame(now) {
+  let dt = (now - lastTime) / 1000;
+  lastTime = now;
+  if (dt > 0.05) { dt = 0.05; }
+  update(dt);
+  draw();
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
