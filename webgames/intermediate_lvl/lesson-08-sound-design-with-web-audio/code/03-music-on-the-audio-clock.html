@@ -1,0 +1,284 @@
+<!doctype html>
+<!-- ===========================================================================
+     03-music-on-the-audio-clock.html — why audio needs its own clock.
+
+     WHAT THIS DEMONSTRATES
+     The same melody, timed two ways:
+
+       setTimeout      asks the browser to call you back in 125 ms. It is late
+                       whenever the page is busy, and every delay is ADDED to
+                       the next one, so the error accumulates.
+
+       audio clock     schedules each note at an exact moment computed by
+                       arithmetic. The game loop only decides WHAT to schedule;
+                       the audio hardware decides when it happens.
+
+     The graph shows how late each note actually was. Press B to make the page
+     genuinely busy and watch the two versions behave completely differently.
+
+     HOW TO RUN IT
+     Double-click, then:
+       Space  start / stop        T  switch timing method
+       B      make the page busy for a moment (a long synchronous loop)
+
+     WHAT TO CHANGE FIRST
+     Start it with setTimeout, hold B for a few seconds, and watch the drift
+     number climb and never come back. Then press T and do it again.
+     ======================================================================== -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Music on the audio clock</title>
+<style>
+  body { background: #11151c; color: #e7ecf3; font-family: system-ui, sans-serif;
+         display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 16px; }
+  canvas { background: #0a0d12; border: 2px solid #2b3240; border-radius: 6px; }
+  p { max-width: 640px; font-size: 14.5px; line-height: 1.5; color: #a9b4c4; }
+  b { color: #ffd43b; }
+</style>
+</head>
+<body>
+<h1>Two clocks, one tune</h1>
+<canvas id="view" width="680" height="420"></canvas>
+<p><b>Space</b> start / stop &middot; <b>T</b> switch timing &middot;
+   <b>B</b> make the page busy. Watch the &ldquo;late by&rdquo; graph.</p>
+
+<script>
+let audio = null, master = null;
+
+function ensureAudio() {
+  if (audio) {
+    if (audio.state === "suspended") { audio.resume(); }
+    return;
+  }
+  audio = new (window.AudioContext || window.webkitAudioContext)();
+  master = audio.createGain();
+  master.gain.value = 0.25;
+  master.connect(audio.destination);
+}
+
+/* Semitones above A3 (220 Hz). 0,4,7,12 is a major chord; this is a short riff. */
+const MELODY = [0, 7, 12, 7, 3, 7, 10, 7];
+const BASS   = [0, 0, -5, -5];
+const STEP_SECONDS = 0.14;
+const LOOK_AHEAD = 0.15;
+
+function noteToFrequency(semitones) {
+  return 220 * Math.pow(2, semitones / 12);
+}
+
+function playNote(semitones, when, type, length, peak) {
+  ensureAudio();
+  const osc = audio.createOscillator();
+  const gain = audio.createGain();
+  osc.type = type;
+  const f = noteToFrequency(semitones);
+  osc.frequency.setValueAtTime(f, when);
+  osc.connect(gain);
+  gain.connect(master);
+  gain.gain.setValueAtTime(0.0001, when);
+  gain.gain.linearRampToValueAtTime(peak, when + 0.006);
+  gain.gain.exponentialRampToValueAtTime(0.0001, when + length);
+  osc.start(when);
+  osc.stop(when + length + 0.02);
+}
+
+let playing = false;
+let useAudioClock = true;
+let step = 0;
+let nextNoteTime = 0;          // audio-clock version
+let timeoutId = null;          // setTimeout version
+let expectedWallTime = 0;      // what the setTimeout version SHOULD have hit
+const lateness = [];           // milliseconds late, for the graph
+let notesPlayed = 0;
+let worstLate = 0;
+
+function recordLateness(ms) {
+  lateness.push(ms);
+  if (lateness.length > 120) { lateness.shift(); }
+  worstLate = Math.max(worstLate, ms);
+  notesPlayed += 1;
+}
+
+/* ---------------------------------------------------------------------------
+   VERSION 1: setTimeout. Simple, and wrong for anything rhythmic.
+   ------------------------------------------------------------------------ */
+function timeoutTick() {
+  if (!playing || useAudioClock) { return; }
+  ensureAudio();
+
+  const now = performance.now();
+  /* How late was this callback compared with when it was due? */
+  recordLateness(Math.max(0, now - expectedWallTime));
+
+  playNote(MELODY[step % MELODY.length], audio.currentTime, "square", 0.12, 0.35);
+  if (step % 2 === 0) {
+    playNote(BASS[(step / 2) % BASS.length] - 12, audio.currentTime, "triangle", 0.2, 0.3);
+  }
+  step += 1;
+
+  /* The next deadline is computed from NOW, so every delay is kept. */
+  expectedWallTime = now + STEP_SECONDS * 1000;
+  timeoutId = setTimeout(timeoutTick, STEP_SECONDS * 1000);
+}
+
+/* ---------------------------------------------------------------------------
+   VERSION 2: the look-ahead scheduler. The loop decides WHAT; the audio clock
+   decides WHEN.
+   ------------------------------------------------------------------------ */
+function scheduleAhead() {
+  if (!playing || !useAudioClock) { return; }
+  ensureAudio();
+
+  while (nextNoteTime < audio.currentTime + LOOK_AHEAD) {
+    /* How late are we SCHEDULING? If this is ever negative we have missed the
+       moment entirely; the look-ahead exists to make sure it is not. */
+    const slack = (nextNoteTime - audio.currentTime) * 1000;
+    recordLateness(Math.max(0, -slack));
+
+    playNote(MELODY[step % MELODY.length], nextNoteTime, "square", 0.12, 0.35);
+    if (step % 2 === 0) {
+      playNote(BASS[(step / 2) % BASS.length] - 12, nextNoteTime, "triangle", 0.2, 0.3);
+    }
+    step += 1;
+
+    /* THE LINE THAT MATTERS: add to the SCHEDULED time, never to "now".
+       This cannot drift, because it never reads the clock. */
+    nextNoteTime += STEP_SECONDS;
+  }
+}
+
+function start() {
+  ensureAudio();
+  playing = true;
+  step = 0;
+  lateness.length = 0;
+  notesPlayed = 0;
+  worstLate = 0;
+  nextNoteTime = audio.currentTime + 0.1;
+  expectedWallTime = performance.now();
+  if (!useAudioClock) { timeoutTick(); }
+}
+function stop() {
+  playing = false;
+  if (timeoutId !== null) { clearTimeout(timeoutId); timeoutId = null; }
+}
+
+document.addEventListener("keydown", function (e) {
+  if (e.key === " ") {
+    e.preventDefault();
+    if (playing) { stop(); } else { start(); }
+  }
+  if (e.key === "t" || e.key === "T") {
+    const was = playing;
+    stop();
+    useAudioClock = !useAudioClock;
+    if (was) { start(); }
+  }
+  if (e.key === "b" || e.key === "B") {
+    /* A genuinely busy page: a long synchronous loop, which is the honest way to
+       reproduce what a heavy frame does to setTimeout. */
+    const until = performance.now() + 120;
+    let sink = 0;
+    while (performance.now() < until) { sink += Math.sqrt(sink + 1); }
+    busyFlash = 0.4;
+  }
+});
+
+let busyFlash = 0;
+
+const view = document.getElementById("view");
+const ctx = view.getContext("2d");
+
+function draw() {
+  ctx.clearRect(0, 0, view.width, view.height);
+
+  ctx.font = "bold 17px system-ui, sans-serif";
+  ctx.fillStyle = useAudioClock ? "#51cf66" : "#ff6b6b";
+  ctx.fillText(useAudioClock ? "AUDIO CLOCK  (look-ahead scheduler)"
+                             : "setTimeout  (the drifting version)", 24, 34);
+  ctx.font = "12.5px ui-monospace, Menlo, monospace";
+  ctx.fillStyle = "#8793a4";
+  ctx.fillText(useAudioClock
+    ? "nextNoteTime += STEP   — arithmetic on the audio clock"
+    : "setTimeout(tick, 125)  — every delay is added to the next", 24, 56);
+
+  /* the lateness graph */
+  const GX = 24, GY = 90, GW = 630, GH = 150;
+  ctx.fillStyle = "#0e1319";
+  ctx.fillRect(GX, GY, GW, GH);
+  ctx.strokeStyle = "#2b3240";
+  ctx.lineWidth = 1;
+  ctx.strokeRect(GX, GY, GW, GH);
+
+  /* the 10 ms line: the threshold at which people hear a timing error */
+  const MAXMS = 150;
+  const y10 = GY + GH - (10 / MAXMS) * GH;
+  ctx.strokeStyle = "#f08c00";
+  ctx.setLineDash([4, 4]);
+  ctx.beginPath();
+  ctx.moveTo(GX, y10); ctx.lineTo(GX + GW, y10);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = "#f08c00";
+  ctx.font = "11px ui-monospace, Menlo, monospace";
+  ctx.fillText("10 ms — audible", GX + GW - 110, y10 - 5);
+
+  const barW = GW / 120;
+  for (let i = 0; i < lateness.length; i++) {
+    const h = Math.min(1, lateness[i] / MAXMS) * GH;
+    ctx.fillStyle = lateness[i] > 10 ? "#ff6b6b" : "#51cf66";
+    ctx.fillRect(GX + i * barW, GY + GH - h, Math.max(1, barW - 1), h);
+  }
+
+  ctx.font = "12px system-ui, sans-serif";
+  ctx.fillStyle = "#6b7480";
+  ctx.fillText("how late each note was, in milliseconds", GX, GY - 8);
+
+  /* the numbers */
+  let total = 0;
+  for (let i = 0; i < lateness.length; i++) { total += lateness[i]; }
+  const average = lateness.length ? total / lateness.length : 0;
+
+  ctx.font = "13px ui-monospace, Menlo, monospace";
+  ctx.fillStyle = "#8793a4";
+  ctx.fillText("notes played  " + notesPlayed, GX, 272);
+  ctx.fillStyle = average > 10 ? "#ff6b6b" : "#51cf66";
+  ctx.fillText("average late  " + average.toFixed(2) + " ms", GX, 292);
+  ctx.fillStyle = worstLate > 10 ? "#ff6b6b" : "#51cf66";
+  ctx.fillText("worst late    " + worstLate.toFixed(2) + " ms", GX, 312);
+  ctx.fillStyle = "#8793a4";
+  ctx.fillText("step          " + step, GX, 332);
+  ctx.fillText("audio.state   " + (audio ? audio.state : "not created"), GX, 352);
+
+  ctx.font = "13px system-ui, sans-serif";
+  ctx.fillStyle = playing ? "#51cf66" : "#6b7480";
+  ctx.fillText(playing ? "playing — press Space to stop" : "stopped — press Space",
+               360, 272);
+
+  if (busyFlash > 0) {
+    ctx.fillStyle = "rgba(255,107,107," + Math.min(0.5, busyFlash) + ")";
+    ctx.fillRect(0, 0, view.width, view.height);
+    ctx.fillStyle = "#ffffff";
+    ctx.font = "bold 15px system-ui, sans-serif";
+    ctx.fillText("page busy", 300, 200);
+  }
+
+  ctx.font = "12.5px system-ui, sans-serif";
+  ctx.fillStyle = "#6b7480";
+  ctx.fillText(useAudioClock
+    ? "Hold B: the notes were scheduled before the page got busy, so they still play on time."
+    : "Hold B: each callback is late, and the lateness is carried into the next one.",
+    GX, 392);
+}
+
+function loop() {
+  if (busyFlash > 0) { busyFlash -= 0.02; }
+  scheduleAhead();          /* every frame, look 150 ms into the future */
+  draw();
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>

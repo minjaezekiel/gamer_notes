@@ -1,0 +1,224 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Why Sounds Need An Envelope</title>
+<meta name="description" content="A note that starts and stops instantly clicks. Step through the envelope and watch the shape that fixes it.">
+<link rel="stylesheet" href="../css/notes.css">
+<link rel="stylesheet" href="../css/code.css">
+</head>
+<body>
+<div class="wrap">
+
+  <p class="breadcrumb"><a href="index.html">&larr; All visualizers</a></p>
+
+  <header class="lesson-head">
+    <p class="kicker">Concept 19 &middot; Works for JavaScript, Python and C++</p>
+    <h1>Why Sounds Need An Envelope</h1>
+    <p class="meta">Loudness over time, and the click you get without it. Used in: web I-L8 &middot; python I-L8 &middot; c++ I-L10</p>
+  </header>
+
+  <p class="lede">A game sound is two things: a <strong>tone</strong>, and a <strong>shape</strong>. The
+  tone is which note. The shape is how its loudness changes over the next tenth of a second &mdash; and
+  the shape is what makes a sound feel like a coin, a thud or an explosion. Leave it out and every sound
+  starts with an audible <em>click</em>, for a reason you can see on this page.</p>
+
+  <div class="look-for">
+    <strong>What to look for</strong>
+    The top graph is <strong>loudness over time</strong>; the bottom one is the actual wave that reaches
+    the speaker. Press <span class="kbd">Step 1 frame</span> and follow the playhead. Now switch off the
+    envelope: the wave starts at full height <em>instantly</em>, and that vertical jump is a click &mdash;
+    a speaker cone being yanked rather than pushed. Then make the attack very long and watch the same
+    note turn from a pluck into a swell, with no change to the note itself.
+  </div>
+
+  <div id="envDemo"></div>
+
+</div>
+
+<script src="../js/page.js"></script>
+<script src="../js/anim.js"></script>
+<script src="../js/codeblock.js"></script>
+<script>
+/* ---------------------------------------------------------------------------
+   An amplitude envelope, drawn, with the resulting waveform underneath.
+
+   This visualizer makes no sound. That is deliberate: the point is to SEE why the
+   envelope exists, and a page that plays a tone sixty times a second during a
+   lesson is not a help to anybody. The lesson's own examples make the noise.
+
+   The thing it exists to deliver: a discontinuity in the waveform is a click.
+   Students are told "ramp the gain" and do it as a ritual; here they can see the
+   vertical edge that the ramp removes.
+   ------------------------------------------------------------------------ */
+(function () {
+  var GX = 30, GY = 76, GW = 520, GH = 130;       // the envelope graph
+  var WX = 30, WY = 250, WW = 520, WH = 120;      // the waveform
+  var PANEL_X = 578;
+  var TOTAL = 0.6;                                 // seconds shown across the graph
+
+  var attackSlider, decaySlider, freqSlider, envToggle;
+
+  /* The envelope: 0 at the start, up to 1 over `attack`, down to 0 over `decay`. */
+  function envelopeAt(t, attack, decay) {
+    if (t < 0) { return 0; }
+    if (t < attack) { return attack === 0 ? 1 : t / attack; }
+    var after = t - attack;
+    if (after >= decay) { return 0; }
+    /* Real audio decays exponentially, not in a straight line - which is why
+       exponentialRampToValueAtTime exists, and why it cannot ramp to exactly 0. */
+    return Math.pow(0.0015, after / decay);
+  }
+
+  var sk = Anim.sketch({
+    mount: '#envDemo',
+    width: 900, height: 430,
+    fps: 60,
+    controls: ['play', 'step', 'reset', 'speed'],
+
+    state: function () { return { t: 0 }; },
+
+    update: function (s, dt) {
+      s.t = s.t + dt;
+      if (s.t > TOTAL) { s.t = 0; }
+    },
+
+    draw: function (s, g, api) {
+      var T = g.color;
+      var attack = attackSlider ? attackSlider.value / 1000 : 0.01;
+      var decay = decaySlider ? decaySlider.value / 1000 : 0.18;
+      var freq = freqSlider ? freqSlider.value : 440;
+      var useEnv = !(envToggle && envToggle.checked);   /* toggle says "no envelope" */
+      g.clear();
+
+      /* ================= 1. the envelope ================= */
+      g.text('LOUDNESS OVER TIME  (the gain node)', GX, GY - 34,
+        { size: 14, bold: true, color: T.muted });
+      g.rect(GX, GY, GW, GH, T.panel);
+      g.line(GX, GY + GH, GX + GW, GY + GH, T.grid, 1);
+      g.strokeRect(GX, GY, GW, GH, T.grid, 1);
+      g.text('1', GX - 14, GY + 10, { size: 11, mono: true, color: T.muted });
+      g.text('0', GX - 14, GY + GH, { size: 11, mono: true, color: T.muted });
+
+      var prevX = null, prevY = null;
+      for (var i = 0; i <= 260; i++) {
+        var tt = (i / 260) * TOTAL;
+        var v = useEnv ? envelopeAt(tt, attack, decay)
+                       : (tt < attack + decay ? 1 : 0);   /* a flat block: on, then off */
+        var x = GX + (tt / TOTAL) * GW;
+        var y = GY + GH - v * GH;
+        if (prevX !== null) { g.line(prevX, prevY, x, y, useEnv ? T.good : T.bad, 2.5); }
+        prevX = x; prevY = y;
+      }
+
+      /* the attack and decay regions, labelled where they happen */
+      var ax = GX + (attack / TOTAL) * GW;
+      var dx = GX + ((attack + decay) / TOTAL) * GW;
+      g.dashed(ax, GY, ax, GY + GH, T.muted, 1);
+      g.dashed(dx, GY, dx, GY + GH, T.muted, 1);
+      g.text('attack ' + Math.round(attack * 1000) + ' ms', GX + 4, GY + 16,
+        { size: 11.5, mono: true, color: T.accent2 });
+      g.text('decay ' + Math.round(decay * 1000) + ' ms', ax + 6, GY + 16,
+        { size: 11.5, mono: true, color: T.accent });
+
+      /* the playhead */
+      var px = GX + (s.t / TOTAL) * GW;
+      g.line(px, GY - 8, px, GY + GH + 6, T.ink, 1.5);
+      var nowGain = useEnv ? envelopeAt(s.t, attack, decay)
+                           : (s.t < attack + decay ? 1 : 0);
+      g.circle(px, GY + GH - nowGain * GH, 5, T.ink);
+
+      /* ================= 2. the wave that reaches the speaker ================= */
+      g.text('WHAT THE SPEAKER RECEIVES  (tone × loudness)', WX, WY - 18,
+        { size: 14, bold: true, color: T.muted });
+      g.rect(WX, WY, WW, WH, T.panel);
+      var mid = WY + WH / 2;
+      g.line(WX, mid, WX + WW, mid, T.grid, 1);
+      g.strokeRect(WX, WY, WW, WH, T.grid, 1);
+
+      prevX = null; prevY = null;
+      for (i = 0; i <= 900; i++) {
+        var wt = (i / 900) * TOTAL;
+        var gain = useEnv ? envelopeAt(wt, attack, decay)
+                          : (wt < attack + decay ? 1 : 0);
+        /* the frequency is divided down so a few cycles are visible rather than
+           a solid block of ink; the SHAPE is the point, not the pitch */
+        var sample = Math.sin(wt * (freq / 8) * Math.PI * 2) * gain;
+        var wx2 = WX + (wt / TOTAL) * WW;
+        var wy2 = mid - sample * (WH / 2 - 6);
+        if (prevX !== null) { g.line(prevX, prevY, wx2, wy2, useEnv ? T.accent : T.bad, 1.4); }
+        prevX = wx2; prevY = wy2;
+      }
+
+      if (!useEnv) {
+        /* the two vertical edges, marked, because they ARE the click */
+        var onX = WX;
+        var offX = WX + ((attack + decay) / TOTAL) * WW;
+        g.arrow(onX + 26, WY + 14, onX + 2, WY + 14, T.bad, 2.5);
+        g.text('a vertical edge', onX + 32, WY + 18, { size: 11.5, bold: true, color: T.bad });
+        g.arrow(offX + 30, WY + WH - 10, offX + 2, WY + WH - 10, T.bad, 2.5);
+        g.text('and another', offX + 36, WY + WH - 6, { size: 11.5, bold: true, color: T.bad });
+      }
+
+      /* ================= 3. the node graph ================= */
+      g.text('THE AUDIO GRAPH', PANEL_X, GY - 34, { size: 14, bold: true, color: T.muted });
+      var nodes = [
+        { label: 'oscillator', sub: Math.round(freq) + ' Hz', col: T.accent },
+        { label: 'gain', sub: nowGain.toFixed(3), col: useEnv ? T.good : T.bad },
+        { label: 'master gain', sub: 'volume', col: T.muted },
+        { label: 'speakers', sub: 'destination', col: T.muted }
+      ];
+      for (var n = 0; n < nodes.length; n++) {
+        var ny = GY - 6 + n * 64;
+        g.rect(PANEL_X, ny, 180, 44, T.panel);
+        g.strokeRect(PANEL_X, ny, 180, 44, nodes[n].col, 1.5);
+        g.text(nodes[n].label, PANEL_X + 10, ny + 19,
+          { size: 13, bold: true, color: nodes[n].col });
+        g.text(nodes[n].sub, PANEL_X + 10, ny + 36, { size: 11.5, mono: true, color: T.muted });
+        if (n < nodes.length - 1) {
+          g.arrow(PANEL_X + 90, ny + 46, PANEL_X + 90, ny + 62, T.grid, 2);
+        }
+      }
+
+      g.text('new oscillator per sound —', PANEL_X, 300, { size: 11.5, color: T.muted });
+      g.text('they are one-shot, and cheap.', PANEL_X, 316, { size: 11.5, color: T.muted });
+      g.text('the gain node is the envelope.', PANEL_X, 338, { size: 11.5, color: T.muted });
+
+      g.text('gain now  ' + nowGain.toFixed(3), PANEL_X, 372,
+        { size: 13, bold: true, mono: true, color: useEnv ? T.good : T.bad });
+      g.text('t = ' + s.t.toFixed(3) + ' s', PANEL_X, 392,
+        { size: 12.5, mono: true, color: T.muted });
+
+      if (!useEnv) {
+        api.say('<strong>No envelope.</strong> The wave jumps from silence to full height in a single ' +
+                'sample, and again back to silence at the end. A speaker cone cannot move like that, ' +
+                'so you hear a <em>click</em> at both ends. This is the commonest complaint about ' +
+                'home-made game audio, and the fix is the ramp you just switched off.');
+      } else if (attack < 0.004) {
+        api.say('A very short attack (' + Math.round(attack * 1000) + ' ms) is what makes a sound ' +
+                'feel like a hit or a coin. Shorter than about 2 ms and it starts to click again — ' +
+                'the ramp needs long enough to actually be a ramp.');
+      } else if (attack > 0.15) {
+        api.say('A long attack turns the same note into a <strong>swell</strong>: a pad, a warning, ' +
+                'a door opening. The tone has not changed at all — only the shape.');
+      } else {
+        api.say('Loudness ' + nowGain.toFixed(3) + ' at t = ' + s.t.toFixed(3) + ' s. ' +
+                'The gain node multiplies the tone by this number, sample by sample.');
+      }
+    },
+
+    onReset: function (s, api) {
+      api.say('Press <strong>Step 1 frame</strong> and follow the playhead, then try the ' +
+              '&ldquo;no envelope&rdquo; switch.');
+    }
+  });
+
+  attackSlider = sk.slider('Attack (ms)', 0, 300, 10, 1);
+  decaySlider  = sk.slider('Decay (ms)', 10, 500, 180, 5);
+  freqSlider   = sk.slider('Frequency (Hz)', 80, 1200, 440, 10);
+  envToggle    = sk.toggle('no envelope (hear the click)', false);
+}());
+</script>
+</body>
+</html>

@@ -1,0 +1,271 @@
+<!doctype html>
+<!-- ===========================================================================
+     01-one-sound-and-the-click.html — listen to the click, then remove it.
+
+     WHAT THIS DEMONSTRATES
+       * the autoplay rule: no sound until you interact, and audio.state tells you
+       * one beep, with and without an envelope, on two keys
+       * what the attack time does, from 0 ms to 300 ms, on a slider
+       * the envelope drawn as you hear it
+
+     HOW TO RUN IT
+     Double-click. Click the page once (the browser requires it), then:
+       A  beep WITH an envelope
+       S  beep WITHOUT one - listen for the click at both ends
+       Z  a very long attack (a swell instead of a hit)
+
+     WHAT TO CHANGE FIRST
+     Set the attack slider to 0 and press A. It clicks again: a ramp needs long
+     enough to actually be a ramp. About 5 ms is the shortest that is safe.
+     ======================================================================== -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>One sound, and the click</title>
+<style>
+  body { background: #11151c; color: #e7ecf3; font-family: system-ui, sans-serif;
+         display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 16px; }
+  canvas { background: #0a0d12; border: 2px solid #2b3240; border-radius: 6px; }
+  #panel { display: grid; grid-template-columns: 150px 200px 70px; gap: 5px 12px;
+           align-items: center; font-size: 13.5px; color: #a9b4c4; }
+  #panel output { font-family: ui-monospace, Menlo, monospace; color: #ffd43b; }
+  button { background: #1b2130; color: #e7ecf3; border: 1px solid #2b3240;
+           border-radius: 6px; padding: 8px 14px; font-size: 14px; cursor: pointer; }
+  button:hover { background: #253044; }
+  #buttons { display: flex; gap: 8px; }
+  p { max-width: 630px; font-size: 14.5px; line-height: 1.5; color: #a9b4c4; }
+  b { color: #ffd43b; }
+</style>
+</head>
+<body>
+<h1>Listen to the click</h1>
+<canvas id="view" width="660" height="300"></canvas>
+<div id="buttons">
+  <button id="good">A &mdash; with envelope</button>
+  <button id="bad">S &mdash; no envelope</button>
+  <button id="swell">Z &mdash; long attack</button>
+</div>
+<div id="panel">
+  <span>attack (ms)</span>
+  <input id="attack" type="range" min="0" max="300" step="1" value="6">
+  <output id="attackOut">6</output>
+  <span>decay (ms)</span>
+  <input id="decay" type="range" min="20" max="600" step="10" value="220">
+  <output id="decayOut">220</output>
+  <span>frequency (Hz)</span>
+  <input id="freq" type="range" min="80" max="1200" step="10" value="440">
+  <output id="freqOut">440</output>
+  <span>master volume</span>
+  <input id="vol" type="range" min="0" max="100" step="1" value="30">
+  <output id="volOut">30</output>
+</div>
+<p>Start with the volume where it is. The two sounds are the <em>same note</em> &mdash;
+   only the shape of the loudness differs.</p>
+
+<script>
+/* ---------------------------------------------------------------------------
+   THE AUTOPLAY RULE.
+
+   The context is created on the FIRST INTERACTION, not when the page loads.
+   Creating it at load time leaves it "suspended" and the browser logs a warning;
+   making it lazily means there is nothing to resume and nothing to explain.
+   ------------------------------------------------------------------------ */
+let audio = null;
+let master = null;
+
+function ensureAudio() {
+  if (audio) {
+    /* It can still be suspended if the tab was backgrounded, so check anyway. */
+    if (audio.state === "suspended") { audio.resume(); }
+    return audio;
+  }
+  audio = new (window.AudioContext || window.webkitAudioContext)();
+  master = audio.createGain();
+  master.gain.value = Number(ui.vol.value) / 100;
+  master.connect(audio.destination);
+  return audio;
+}
+
+const ui = {
+  attack: document.getElementById("attack"),
+  decay: document.getElementById("decay"),
+  freq: document.getElementById("freq"),
+  vol: document.getElementById("vol")
+};
+const outs = {
+  attack: document.getElementById("attackOut"),
+  decay: document.getElementById("decayOut"),
+  freq: document.getElementById("freqOut"),
+  vol: document.getElementById("volOut")
+};
+Object.keys(ui).forEach(function (k) {
+  ui[k].addEventListener("input", function () {
+    outs[k].textContent = ui[k].value;
+    if (k === "vol" && master) { master.gain.value = Number(ui.vol.value) / 100; }
+  });
+});
+
+let lastPlayed = null;        // "good" | "bad" | "swell", for the drawing
+
+/* ---------------------------------------------------------------------------
+   ONE SOUND. A new oscillator and a new gain every time: oscillators are
+   one-shot, and they are cheap enough that this is the normal way to work.
+   ------------------------------------------------------------------------ */
+function beep(options) {
+  ensureAudio();
+  const now = audio.currentTime;
+  const freq = options.freq;
+  const attack = options.attack;
+  const decay = options.decay;
+
+  const osc = audio.createOscillator();
+  const gain = audio.createGain();
+  osc.type = options.type || "square";
+  osc.frequency.setValueAtTime(freq, now);
+
+  osc.connect(gain);
+  gain.connect(master);
+
+  if (options.envelope) {
+    /* THE ENVELOPE.
+       0 at the start, up to 1 over `attack`, then down over `decay`.
+       exponentialRampToValueAtTime cannot take 0 - you cannot reach zero by
+       multiplying - so it ramps to 0.0001 instead. */
+    gain.gain.setValueAtTime(0.0001, now);
+    gain.gain.linearRampToValueAtTime(1, now + Math.max(0.0005, attack));
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + attack + decay);
+  } else {
+    /* NO ENVELOPE: full volume from the first sample, silence after the last.
+       Two vertical edges in the waveform, which is two clicks. */
+    gain.gain.setValueAtTime(1, now);
+  }
+
+  osc.start(now);
+  osc.stop(now + attack + decay + 0.01);
+}
+
+function playGood() {
+  lastPlayed = "good";
+  beep({ freq: Number(ui.freq.value), attack: Number(ui.attack.value) / 1000,
+         decay: Number(ui.decay.value) / 1000, envelope: true });
+  draw();
+}
+function playBad() {
+  lastPlayed = "bad";
+  beep({ freq: Number(ui.freq.value), attack: Number(ui.attack.value) / 1000,
+         decay: Number(ui.decay.value) / 1000, envelope: false });
+  draw();
+}
+function playSwell() {
+  lastPlayed = "swell";
+  beep({ freq: Number(ui.freq.value), attack: 0.3, decay: 0.4,
+         envelope: true, type: "sine" });
+  draw();
+}
+
+document.getElementById("good").addEventListener("click", playGood);
+document.getElementById("bad").addEventListener("click", playBad);
+document.getElementById("swell").addEventListener("click", playSwell);
+document.addEventListener("keydown", function (e) {
+  if (e.key === "a" || e.key === "A") { playGood(); }
+  if (e.key === "s" || e.key === "S") { playBad(); }
+  if (e.key === "z" || e.key === "Z") { playSwell(); }
+});
+
+/* ---------------------------------------------------------------------------
+   Draw the shape of whatever was played last.
+   ------------------------------------------------------------------------ */
+const view = document.getElementById("view");
+const ctx = view.getContext("2d");
+
+function envelopeValue(t, attack, decay, hasEnvelope) {
+  if (!hasEnvelope) { return t < attack + decay ? 1 : 0; }
+  if (t < attack) { return attack === 0 ? 1 : t / attack; }
+  const after = t - attack;
+  if (after > decay) { return 0; }
+  return Math.pow(0.0015, after / decay);
+}
+
+function draw() {
+  ctx.clearRect(0, 0, view.width, view.height);
+
+  const attack = lastPlayed === "swell" ? 0.3 : Number(ui.attack.value) / 1000;
+  const decay = lastPlayed === "swell" ? 0.4 : Number(ui.decay.value) / 1000;
+  const hasEnv = lastPlayed !== "bad";
+  const total = Math.max(0.3, attack + decay + 0.05);
+
+  const GX = 30, GY = 60, GW = 600, GH = 90;
+  ctx.fillStyle = "#0e1319";
+  ctx.fillRect(GX, GY, GW, GH);
+  ctx.strokeStyle = "#2b3240";
+  ctx.lineWidth = 1;
+  ctx.strokeRect(GX, GY, GW, GH);
+
+  ctx.font = "bold 13px system-ui, sans-serif";
+  ctx.fillStyle = "#e7ecf3";
+  ctx.fillText("LOUDNESS OVER TIME", GX, 36);
+  ctx.font = "12px ui-monospace, Menlo, monospace";
+  ctx.fillStyle = "#8793a4";
+  ctx.fillText("state: " + (audio ? audio.state : "no context yet — click or press a key"),
+               GX + 230, 36);
+
+  ctx.strokeStyle = hasEnv ? "#51cf66" : "#ff6b6b";
+  ctx.lineWidth = 2.5;
+  ctx.beginPath();
+  for (let i = 0; i <= 300; i++) {
+    const t = (i / 300) * total;
+    const v = envelopeValue(t, attack, decay, hasEnv);
+    const x = GX + (t / total) * GW;
+    const y = GY + GH - v * GH;
+    if (i === 0) { ctx.moveTo(x, y); } else { ctx.lineTo(x, y); }
+  }
+  ctx.stroke();
+
+  /* the waveform underneath */
+  const WY = 180, WH = 90;
+  ctx.fillStyle = "#0e1319";
+  ctx.fillRect(GX, WY, GW, WH);
+  ctx.strokeStyle = "#2b3240";
+  ctx.lineWidth = 1;
+  ctx.strokeRect(GX, WY, GW, WH);
+  ctx.font = "bold 13px system-ui, sans-serif";
+  ctx.fillStyle = "#e7ecf3";
+  ctx.fillText("WHAT THE SPEAKER RECEIVES", GX, WY - 10);
+
+  const mid = WY + WH / 2;
+  const freq = Number(ui.freq.value);
+  ctx.strokeStyle = hasEnv ? "#4dabf7" : "#ff6b6b";
+  ctx.lineWidth = 1.2;
+  ctx.beginPath();
+  for (let i = 0; i <= 1200; i++) {
+    const t = (i / 1200) * total;
+    const v = envelopeValue(t, attack, decay, hasEnv);
+    const sample = Math.sin(t * (freq / 7) * Math.PI * 2) * v;
+    const x = GX + (t / total) * GW;
+    const y = mid - sample * (WH / 2 - 5);
+    if (i === 0) { ctx.moveTo(x, y); } else { ctx.lineTo(x, y); }
+  }
+  ctx.stroke();
+
+  ctx.font = "13px system-ui, sans-serif";
+  if (lastPlayed === null) {
+    ctx.fillStyle = "#8793a4";
+    ctx.fillText("press A, S or Z", GX, 292);
+  } else if (!hasEnv) {
+    ctx.fillStyle = "#ff6b6b";
+    ctx.fillText("no envelope: the wave starts and ends at full height. " +
+                 "Those two vertical edges are the clicks.", GX, 292);
+  } else if (attack > 0.15) {
+    ctx.fillStyle = "#51cf66";
+    ctx.fillText("a long attack turns the same note into a swell. The note never changed.",
+                 GX, 292);
+  } else {
+    ctx.fillStyle = "#51cf66";
+    ctx.fillText("attack " + Math.round(attack * 1000) + " ms, decay " +
+                 Math.round(decay * 1000) + " ms — a hit, a coin, a tap.", GX, 292);
+  }
+}
+draw();
+</script>
+</body>
+</html>

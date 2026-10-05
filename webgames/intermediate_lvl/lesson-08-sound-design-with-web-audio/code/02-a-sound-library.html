@@ -1,0 +1,323 @@
+<!doctype html>
+<!-- ===========================================================================
+     02-a-sound-library.html — eight game sounds, no files.
+
+     WHAT THIS DEMONSTRATES
+     Every sound here is built from four ideas and nothing else:
+       * an oscillator shape (sine, square, sawtooth, triangle)
+       * a frequency that may SWEEP from one value to another
+       * an envelope (attack, decay)
+       * noise through a filter, for anything that is not a note
+
+     Notice how similar jump and laser are: the same code with the sweep
+     direction reversed. Most "different" sounds are that small a change.
+
+     HOW TO RUN IT
+     Double-click. Click a button, or press 1-8. Sliders change the sound that is
+     highlighted; R randomises the pitch of every sound slightly.
+
+     WHAT TO CHANGE FIRST
+     Pick "explosion" and drag the filter slider from 200 up to 6000. The same
+     noise becomes a thud, then a crash, then a hiss. One number.
+     ======================================================================== -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>A sound library</title>
+<style>
+  body { background: #11151c; color: #e7ecf3; font-family: system-ui, sans-serif;
+         display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 16px; }
+  canvas { background: #0a0d12; border: 2px solid #2b3240; border-radius: 6px; }
+  #sounds { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; max-width: 680px; }
+  button { background: #1b2130; color: #e7ecf3; border: 1px solid #2b3240;
+           border-radius: 6px; padding: 8px 12px; font-size: 13.5px; cursor: pointer; }
+  button:hover { background: #253044; }
+  button.sel { border-color: #ffd43b; color: #ffd43b; }
+  #panel { display: grid; grid-template-columns: 170px 190px 70px; gap: 4px 12px;
+           align-items: center; font-size: 13px; color: #a9b4c4; }
+  #panel output { font-family: ui-monospace, Menlo, monospace; color: #ffd43b; }
+  p { max-width: 630px; font-size: 14.5px; line-height: 1.5; color: #a9b4c4; }
+  b { color: #ffd43b; }
+</style>
+</head>
+<body>
+<h1>Eight sounds, no files</h1>
+<canvas id="view" width="680" height="210"></canvas>
+<div id="sounds"></div>
+<div id="panel">
+  <span>start frequency</span>
+  <input id="f1" type="range" min="40" max="2000" step="10" value="440">
+  <output id="f1o">440</output>
+  <span>end frequency (sweep)</span>
+  <input id="f2" type="range" min="40" max="2000" step="10" value="440">
+  <output id="f2o">440</output>
+  <span>attack (ms)</span>
+  <input id="at" type="range" min="0" max="200" step="1" value="5">
+  <output id="ato">5</output>
+  <span>decay (ms)</span>
+  <input id="de" type="range" min="20" max="900" step="10" value="200">
+  <output id="deo">200</output>
+  <span>noise filter (Hz)</span>
+  <input id="fil" type="range" min="150" max="8000" step="50" value="900">
+  <output id="filo">900</output>
+  <span>master volume</span>
+  <input id="vol" type="range" min="0" max="100" step="1" value="30">
+  <output id="volo">30</output>
+</div>
+<p>Press <b>1</b>&ndash;<b>8</b> or click. The sliders edit the selected sound, and
+   the panel shows the four numbers that define it. <b>R</b> toggles random pitch.</p>
+
+<script>
+let audio = null, master = null, noiseBuffer = null;
+
+function ensureAudio() {
+  if (audio) {
+    if (audio.state === "suspended") { audio.resume(); }
+    return;
+  }
+  audio = new (window.AudioContext || window.webkitAudioContext)();
+  master = audio.createGain();
+  master.gain.value = Number(ui.vol.value) / 100;      // headroom: never 1
+  master.connect(audio.destination);
+  noiseBuffer = makeNoiseBuffer(1.0);
+}
+
+/* ---------------------------------------------------------------------------
+   NOISE: random samples, built once and reused. Anything that is not a note -
+   explosions, footsteps, wind - starts here.
+   ------------------------------------------------------------------------ */
+function makeNoiseBuffer(seconds) {
+  const length = Math.floor(audio.sampleRate * seconds);
+  const buffer = audio.createBuffer(1, length, audio.sampleRate);
+  const data = buffer.getChannelData(0);
+  for (let i = 0; i < length; i++) {
+    data[i] = Math.random() * 2 - 1;
+  }
+  return buffer;
+}
+
+/* ---------------------------------------------------------------------------
+   THE SOUND TABLE. Every entry is data, not code - which is the point of
+   section E's first question. A new sound is a new line.
+   ------------------------------------------------------------------------ */
+const SOUNDS = [
+  { key: "1", name: "coin",      kind: "two-note", type: "sine",
+    f1: 988, f2: 1319, attack: 4, decay: 140, note: "two short sine notes, the second higher" },
+  { key: "2", name: "jump",      kind: "sweep", type: "square",
+    f1: 180, f2: 620, attack: 5, decay: 180, note: "a square wave sweeping UP" },
+  { key: "3", name: "laser",     kind: "sweep", type: "sawtooth",
+    f1: 1400, f2: 180, attack: 2, decay: 240, note: "the same code, sweeping DOWN" },
+  { key: "4", name: "hit",       kind: "sweep", type: "square",
+    f1: 320, f2: 90, attack: 1, decay: 120, note: "short, low, fast decay" },
+  { key: "5", name: "explosion", kind: "noise", type: "sine",
+    f1: 1800, f2: 120, attack: 4, decay: 700, filter: 1800,
+    note: "noise + a lowpass filter sweeping down" },
+  { key: "6", name: "footstep",  kind: "noise", type: "sine",
+    f1: 700, f2: 400, attack: 1, decay: 70, filter: 700,
+    note: "the same noise with a very short envelope" },
+  { key: "7", name: "powerup",   kind: "arpeggio", type: "triangle",
+    f1: 523, f2: 1047, attack: 4, decay: 110, note: "four rising notes, 60 ms apart" },
+  { key: "8", name: "menu",      kind: "two-note", type: "sine",
+    f1: 660, f2: 660, attack: 3, decay: 70, note: "one very short soft note" }
+];
+let selected = 0;
+let randomPitch = false;
+
+const ui = {
+  f1: document.getElementById("f1"), f2: document.getElementById("f2"),
+  at: document.getElementById("at"), de: document.getElementById("de"),
+  fil: document.getElementById("fil"), vol: document.getElementById("vol")
+};
+const outs = {
+  f1: document.getElementById("f1o"), f2: document.getElementById("f2o"),
+  at: document.getElementById("ato"), de: document.getElementById("deo"),
+  fil: document.getElementById("filo"), vol: document.getElementById("volo")
+};
+Object.keys(ui).forEach(function (k) {
+  ui[k].addEventListener("input", function () {
+    outs[k].textContent = ui[k].value;
+    if (k === "vol") {
+      if (master) { master.gain.value = Number(ui.vol.value) / 100; }
+      return;
+    }
+    const s = SOUNDS[selected];
+    if (k === "f1") { s.f1 = Number(ui.f1.value); }
+    if (k === "f2") { s.f2 = Number(ui.f2.value); }
+    if (k === "at") { s.attack = Number(ui.at.value); }
+    if (k === "de") { s.decay = Number(ui.de.value); }
+    if (k === "fil") { s.filter = Number(ui.fil.value); }
+    draw();
+  });
+});
+
+function loadSliders() {
+  const s = SOUNDS[selected];
+  ui.f1.value = s.f1; outs.f1.textContent = s.f1;
+  ui.f2.value = s.f2; outs.f2.textContent = s.f2;
+  ui.at.value = s.attack; outs.at.textContent = s.attack;
+  ui.de.value = s.decay; outs.de.textContent = s.decay;
+  ui.fil.value = s.filter || 900; outs.fil.textContent = s.filter || 900;
+}
+
+/* ---- the four building blocks ---- */
+
+function envelope(gain, when, attackMs, decayMs, peak) {
+  const a = Math.max(0.0008, attackMs / 1000);
+  const d = Math.max(0.01, decayMs / 1000);
+  gain.gain.setValueAtTime(0.0001, when);
+  gain.gain.linearRampToValueAtTime(peak === undefined ? 1 : peak, when + a);
+  gain.gain.exponentialRampToValueAtTime(0.0001, when + a + d);
+  return a + d;
+}
+
+function tone(type, f1, f2, when, attackMs, decayMs, peak) {
+  const osc = audio.createOscillator();
+  const gain = audio.createGain();
+  osc.type = type;
+  osc.frequency.setValueAtTime(f1, when);
+  if (f2 !== f1) {
+    /* A SWEEP. Jump and laser are the same line with f1 and f2 swapped. */
+    osc.frequency.linearRampToValueAtTime(f2, when + (attackMs + decayMs) / 1000);
+  }
+  osc.connect(gain);
+  gain.connect(master);
+  const total = envelope(gain, when, attackMs, decayMs, peak);
+  osc.start(when);
+  osc.stop(when + total + 0.02);
+}
+
+function noise(when, filterHz, filterEnd, attackMs, decayMs) {
+  const src = audio.createBufferSource();
+  src.buffer = noiseBuffer;
+  const filter = audio.createBiquadFilter();
+  filter.type = "lowpass";
+  filter.frequency.setValueAtTime(filterHz, when);
+  if (filterEnd) {
+    /* Sweeping the filter DOWN is what turns a hiss into an explosion. */
+    filter.frequency.exponentialRampToValueAtTime(
+      Math.max(60, filterEnd), when + decayMs / 1000);
+  }
+  const gain = audio.createGain();
+  src.connect(filter);
+  filter.connect(gain);
+  gain.connect(master);
+  const total = envelope(gain, when, attackMs, decayMs);
+  src.start(when);
+  src.stop(when + total + 0.02);
+}
+
+function play(index) {
+  ensureAudio();
+  loadSliders();
+  const s = SOUNDS[index];
+  const now = audio.currentTime + 0.01;
+  /* Random pitch: one line, and repeated sounds stop being grating. */
+  const wobble = randomPitch ? 0.94 + Math.random() * 0.12 : 1;
+
+  if (s.kind === "sweep") {
+    tone(s.type, s.f1 * wobble, s.f2 * wobble, now, s.attack, s.decay);
+  } else if (s.kind === "two-note") {
+    tone(s.type, s.f1 * wobble, s.f1 * wobble, now, s.attack, s.decay);
+    if (s.f2 !== s.f1) {
+      tone(s.type, s.f2 * wobble, s.f2 * wobble, now + 0.075, s.attack, s.decay);
+    }
+  } else if (s.kind === "arpeggio") {
+    /* Semitones, from the formula: 0, 4, 7, 12 is a major chord. */
+    const steps = [0, 4, 7, 12];
+    for (let i = 0; i < steps.length; i++) {
+      const f = s.f1 * Math.pow(2, steps[i] / 12) * wobble;
+      tone(s.type, f, f, now + i * 0.06, s.attack, s.decay, 0.7);
+    }
+  } else if (s.kind === "noise") {
+    noise(now, (s.filter || 900) * wobble, s.f2, s.attack, s.decay);
+  }
+  draw();
+}
+
+/* ---- buttons ---- */
+const holder = document.getElementById("sounds");
+SOUNDS.forEach(function (s, i) {
+  const b = document.createElement("button");
+  b.textContent = s.key + " — " + s.name;
+  b.addEventListener("click", function () { selected = i; markButtons(); play(i); });
+  holder.appendChild(b);
+});
+function markButtons() {
+  const bs = holder.querySelectorAll("button");
+  for (let i = 0; i < bs.length; i++) {
+    if (i === selected) { bs[i].classList.add("sel"); } else { bs[i].classList.remove("sel"); }
+  }
+}
+markButtons();
+
+document.addEventListener("keydown", function (e) {
+  const n = Number(e.key);
+  if (n >= 1 && n <= SOUNDS.length) { selected = n - 1; markButtons(); play(n - 1); }
+  if (e.key === "r" || e.key === "R") { randomPitch = !randomPitch; draw(); }
+});
+
+/* ---- the picture ---- */
+const view = document.getElementById("view");
+const ctx = view.getContext("2d");
+
+function draw() {
+  ctx.clearRect(0, 0, view.width, view.height);
+  const s = SOUNDS[selected];
+
+  ctx.font = "bold 17px system-ui, sans-serif";
+  ctx.fillStyle = "#ffd43b";
+  ctx.fillText(s.name.toUpperCase(), 24, 34);
+  ctx.font = "13px system-ui, sans-serif";
+  ctx.fillStyle = "#a9b4c4";
+  ctx.fillText(s.note, 24, 56);
+
+  ctx.font = "12.5px ui-monospace, Menlo, monospace";
+  ctx.fillStyle = "#8793a4";
+  const rows = [
+    "kind      " + s.kind,
+    "shape     " + s.type,
+    "frequency " + s.f1 + (s.f2 !== s.f1 ? "  ->  " + s.f2 : ""),
+    "attack    " + s.attack + " ms",
+    "decay     " + s.decay + " ms"
+  ];
+  if (s.filter) { rows.push("filter    " + s.filter + " Hz lowpass"); }
+  for (let i = 0; i < rows.length; i++) {
+    ctx.fillText(rows[i], 24, 86 + i * 19);
+  }
+
+  /* the envelope shape */
+  const GX = 340, GY = 70, GW = 310, GH = 90;
+  ctx.fillStyle = "#0e1319";
+  ctx.fillRect(GX, GY, GW, GH);
+  ctx.strokeStyle = "#2b3240";
+  ctx.lineWidth = 1;
+  ctx.strokeRect(GX, GY, GW, GH);
+  const a = Math.max(0.0008, s.attack / 1000), d = s.decay / 1000;
+  const total = a + d;
+  ctx.strokeStyle = "#51cf66";
+  ctx.lineWidth = 2.5;
+  ctx.beginPath();
+  for (let i = 0; i <= 200; i++) {
+    const t = (i / 200) * total;
+    let v;
+    if (t < a) { v = t / a; } else { v = Math.pow(0.0015, (t - a) / d); }
+    const x = GX + (t / total) * GW;
+    const y = GY + GH - v * GH;
+    if (i === 0) { ctx.moveTo(x, y); } else { ctx.lineTo(x, y); }
+  }
+  ctx.stroke();
+  ctx.font = "11.5px system-ui, sans-serif";
+  ctx.fillStyle = "#6b7480";
+  ctx.fillText("envelope  (" + Math.round(total * 1000) + " ms total)", GX, GY - 8);
+
+  ctx.font = "12.5px ui-monospace, Menlo, monospace";
+  ctx.fillStyle = audio ? "#51cf66" : "#f08c00";
+  ctx.fillText("audio.state: " + (audio ? audio.state : "not created yet"), GX, 184);
+  ctx.fillStyle = randomPitch ? "#51cf66" : "#6b7480";
+  ctx.fillText("random pitch: " + (randomPitch ? "ON (R)" : "off (R)"), 24, 184);
+}
+loadSliders();
+draw();
+</script>
+</body>
+</html>

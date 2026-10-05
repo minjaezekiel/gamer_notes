@@ -1,0 +1,345 @@
+<!doctype html>
+<!-- ===========================================================================
+     04-sound-in-a-game.html — the whole system, wired into something playable.
+
+     WHAT THIS DEMONSTRATES
+       * one sound per game event, called from the game logic
+       * a master volume, and why it is not 1
+       * a cap on simultaneous sounds, with a live counter proving it works
+       * the eight-coins-in-one-frame problem, and the arpeggio that fixes it
+       * random pitch variation, which costs one line
+
+     HOW TO RUN IT
+     Double-click. Arrow keys to move, collect the yellow dots, avoid red.
+       C  collect a whole row of coins at once (the pile-up demo)
+       A  arpeggio fix on / off
+       P  random pitch on / off
+       M  master volume 1.0 (no headroom) on / off
+
+     WHAT TO CHANGE FIRST
+     Press M and then C. That is clipping: the crackle you hear is the sum of the
+     sounds being louder than a speaker can produce. Press M again and A, and press
+     C once more.
+     ======================================================================== -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Sound in a game</title>
+<style>
+  body { background: #11151c; color: #e7ecf3; font-family: system-ui, sans-serif;
+         display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 16px; }
+  canvas { background: #0a0d12; border: 2px solid #2b3240; border-radius: 6px; }
+  p { max-width: 650px; font-size: 14.5px; line-height: 1.5; color: #a9b4c4; }
+  b { color: #ffd43b; }
+</style>
+</head>
+<body>
+<h1>All of it, in a game</h1>
+<canvas id="game" width="680" height="430"></canvas>
+<p>Arrows move &middot; <b>C</b> collect a row at once &middot; <b>A</b> arpeggio fix &middot;
+   <b>P</b> random pitch &middot; <b>M</b> remove the headroom.</p>
+
+<script>
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+
+/* =========================================================================
+   THE SOUND SYSTEM. Everything a game needs is in here, and the game below
+   never touches an oscillator.
+   ====================================================================== */
+const Sound = {
+  audio: null,
+  master: null,
+  noiseBuffer: null,
+  active: 0,                  // how many sounds are playing right now
+  MAX_ACTIVE: 12,             // the cap
+  refused: 0,                 // how many were turned away, for the readout
+  headroom: 0.3,              // master gain. NEVER 1.
+  randomPitch: true,
+
+  ensure: function () {
+    if (this.audio) {
+      if (this.audio.state === "suspended") { this.audio.resume(); }
+      return;
+    }
+    this.audio = new (window.AudioContext || window.webkitAudioContext)();
+    this.master = this.audio.createGain();
+    this.master.gain.value = this.headroom;
+    this.master.connect(this.audio.destination);
+    this.noiseBuffer = this.makeNoise(0.8);
+  },
+
+  setHeadroom: function (v) {
+    this.headroom = v;
+    if (this.master) { this.master.gain.value = v; }
+  },
+
+  makeNoise: function (seconds) {
+    const n = Math.floor(this.audio.sampleRate * seconds);
+    const buf = this.audio.createBuffer(1, n, this.audio.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < n; i++) { d[i] = Math.random() * 2 - 1; }
+    return buf;
+  },
+
+  wobble: function () {
+    return this.randomPitch ? 0.94 + Math.random() * 0.12 : 1;
+  },
+
+  /* Bookkeeping so the cap can work. A sound counts as active until its own
+     length has passed. */
+  claim: function (length) {
+    if (this.active >= this.MAX_ACTIVE) { this.refused += 1; return false; }
+    this.active += 1;
+    const self = this;
+    setTimeout(function () { self.active -= 1; }, length * 1000);
+    return true;
+  },
+
+  tone: function (type, f1, f2, when, attack, decay, peak) {
+    this.ensure();
+    if (!this.claim(attack + decay)) { return; }
+    const osc = this.audio.createOscillator();
+    const gain = this.audio.createGain();
+    osc.type = type;
+    osc.frequency.setValueAtTime(f1, when);
+    if (f2 !== f1) { osc.frequency.linearRampToValueAtTime(f2, when + attack + decay); }
+    osc.connect(gain);
+    gain.connect(this.master);
+    gain.gain.setValueAtTime(0.0001, when);
+    gain.gain.linearRampToValueAtTime(peak === undefined ? 1 : peak,
+                                      when + Math.max(0.001, attack));
+    gain.gain.exponentialRampToValueAtTime(0.0001, when + attack + decay);
+    osc.start(when);
+    osc.stop(when + attack + decay + 0.02);
+  },
+
+  noise: function (when, from, to, attack, decay) {
+    this.ensure();
+    if (!this.claim(attack + decay)) { return; }
+    const src = this.audio.createBufferSource();
+    src.buffer = this.noiseBuffer;
+    const filter = this.audio.createBiquadFilter();
+    filter.type = "lowpass";
+    filter.frequency.setValueAtTime(from, when);
+    filter.frequency.exponentialRampToValueAtTime(Math.max(60, to), when + decay);
+    const gain = this.audio.createGain();
+    src.connect(filter);
+    filter.connect(gain);
+    gain.connect(this.master);
+    gain.gain.setValueAtTime(0.0001, when);
+    gain.gain.linearRampToValueAtTime(0.9, when + Math.max(0.001, attack));
+    gain.gain.exponentialRampToValueAtTime(0.0001, when + attack + decay);
+    src.start(when);
+    src.stop(when + attack + decay + 0.02);
+  },
+
+  /* ---- the game's vocabulary. The game calls THESE. ---- */
+
+  coin: function (index) {
+    this.ensure();
+    const w = this.wobble();
+    /* `index` spreads a group of coins out in time: one coin is a note, eight
+       coins are an arpeggio rather than a pile-up. */
+    const offset = (index || 0) * 0.045;
+    const semis = (index || 0) * 2;
+    const base = 988 * Math.pow(2, semis / 12) * w;
+    const t = this.audio.currentTime + 0.01 + offset;
+    this.tone("sine", base, base, t, 0.004, 0.13, 0.6);
+    this.tone("sine", base * 1.335, base * 1.335, t + 0.07, 0.004, 0.13, 0.5);
+  },
+
+  jump: function () {
+    this.ensure();
+    const w = this.wobble();
+    this.tone("square", 180 * w, 620 * w, this.audio.currentTime + 0.01, 0.005, 0.18, 0.5);
+  },
+
+  hit: function () {
+    this.ensure();
+    const w = this.wobble();
+    this.tone("square", 320 * w, 90 * w, this.audio.currentTime + 0.01, 0.001, 0.14, 0.7);
+    this.noise(this.audio.currentTime + 0.01, 1400 * w, 150, 0.004, 0.3);
+  }
+};
+
+/* =========================================================================
+   THE GAME. It says "Sound.coin()". It knows nothing about oscillators.
+   ====================================================================== */
+const player = { x: 340, y: 330, w: 22, h: 26, vx: 0, vy: 0, onGround: true };
+const GROUND_Y = 356;
+let coins = [];
+let hazards = [];
+let score = 0;
+let arpeggio = true;
+let lastEvent = "";
+let eventFlash = 0;
+
+function resetWorld() {
+  coins = [];
+  for (let i = 0; i < 8; i++) {
+    coins.push({ x: 90 + i * 66, y: 250, taken: false });
+  }
+  hazards = [
+    { x: 120, y: 180, vx: 130 },
+    { x: 480, y: 120, vx: -90 }
+  ];
+}
+resetWorld();
+
+const keys = {};
+document.addEventListener("keydown", function (e) {
+  keys[e.key] = true;
+  if (e.key.startsWith("Arrow") || e.key === " ") { e.preventDefault(); }
+
+  if (e.key === "c" || e.key === "C") {
+    /* THE PILE-UP DEMO: collect every remaining coin on this one frame. */
+    let n = 0;
+    for (let i = 0; i < coins.length; i++) {
+      if (coins[i].taken) { continue; }
+      coins[i].taken = true;
+      score += 10;
+      Sound.coin(arpeggio ? n : 0);     // index 0 for everything = all at once
+      n += 1;
+    }
+    lastEvent = arpeggio ? "8 coins, spread into an arpeggio"
+                         : "8 coins, all on the same sample";
+    eventFlash = 1;
+    if (n === 0) { resetWorld(); }
+  }
+  if (e.key === "a" || e.key === "A") { arpeggio = !arpeggio; }
+  if (e.key === "p" || e.key === "P") { Sound.randomPitch = !Sound.randomPitch; }
+  if (e.key === "m" || e.key === "M") {
+    Sound.setHeadroom(Sound.headroom === 1 ? 0.3 : 1);
+  }
+});
+document.addEventListener("keyup", function (e) { keys[e.key] = false; });
+
+function update(dt) {
+  if (eventFlash > 0) { eventFlash -= dt * 1.4; }
+
+  player.vx = 0;
+  if (keys["ArrowLeft"])  { player.vx = -260; }
+  if (keys["ArrowRight"]) { player.vx = 260; }
+  if ((keys["ArrowUp"] || keys[" "]) && player.onGround) {
+    player.vy = -520;
+    player.onGround = false;
+    Sound.jump();
+    lastEvent = "jump";
+    eventFlash = 1;
+  }
+
+  player.vy += 1500 * dt;
+  player.x += player.vx * dt;
+  player.y += player.vy * dt;
+  if (player.y + player.h >= GROUND_Y) {
+    player.y = GROUND_Y - player.h;
+    player.vy = 0;
+    player.onGround = true;
+  }
+  player.x = Math.max(10, Math.min(canvas.width - 10 - player.w, player.x));
+
+  for (let i = 0; i < coins.length; i++) {
+    const c = coins[i];
+    if (c.taken) { continue; }
+    if (Math.abs(c.x - (player.x + player.w / 2)) < 20 &&
+        Math.abs(c.y - (player.y + player.h / 2)) < 24) {
+      c.taken = true;
+      score += 10;
+      Sound.coin(0);
+      lastEvent = "coin";
+      eventFlash = 1;
+    }
+  }
+
+  for (let i = 0; i < hazards.length; i++) {
+    const h = hazards[i];
+    h.x += h.vx * dt;
+    if (h.x < 24 || h.x > canvas.width - 24) { h.vx = -h.vx; }
+    if (Math.abs(h.x - (player.x + player.w / 2)) < 22 &&
+        Math.abs(h.y - (player.y + player.h / 2)) < 24) {
+      Sound.hit();
+      lastEvent = "hit";
+      eventFlash = 1;
+      score = Math.max(0, score - 5);
+      player.x = 340;
+      player.y = 300;
+    }
+  }
+}
+
+function draw() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = "#0f141b";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = "#1a2230";
+  ctx.fillRect(0, GROUND_Y, canvas.width, canvas.height - GROUND_Y);
+
+  for (let i = 0; i < coins.length; i++) {
+    if (coins[i].taken) { continue; }
+    ctx.fillStyle = "#ffd43b";
+    ctx.beginPath();
+    ctx.arc(coins[i].x, coins[i].y, 8, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  for (let i = 0; i < hazards.length; i++) {
+    ctx.fillStyle = "#ff6b6b";
+    ctx.beginPath();
+    ctx.arc(hazards[i].x, hazards[i].y, 13, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.fillStyle = "#4dabf7";
+  ctx.fillRect(Math.round(player.x), Math.round(player.y), player.w, player.h);
+
+  /* ---- the sound readout ---- */
+  ctx.fillStyle = "rgba(10,13,18,0.9)";
+  ctx.fillRect(10, 10, 300, 132);
+  ctx.strokeStyle = "#2b3240";
+  ctx.lineWidth = 1;
+  ctx.strokeRect(10, 10, 300, 132);
+
+  ctx.font = "bold 15px system-ui, sans-serif";
+  ctx.fillStyle = "#e7ecf3";
+  ctx.fillText("SCORE " + score, 22, 32);
+
+  ctx.font = "12px ui-monospace, Menlo, monospace";
+  ctx.fillStyle = Sound.active >= Sound.MAX_ACTIVE ? "#ff6b6b" : "#8793a4";
+  ctx.fillText("sounds playing  " + Sound.active + " / " + Sound.MAX_ACTIVE, 22, 54);
+  ctx.fillStyle = Sound.refused > 0 ? "#f08c00" : "#6b7480";
+  ctx.fillText("refused by cap  " + Sound.refused, 22, 72);
+  ctx.fillStyle = Sound.headroom === 1 ? "#ff6b6b" : "#51cf66";
+  ctx.fillText("master gain     " + Sound.headroom.toFixed(2) +
+               (Sound.headroom === 1 ? "  (no headroom!)" : "  (headroom)"), 22, 90);
+  ctx.fillStyle = arpeggio ? "#51cf66" : "#f08c00";
+  ctx.fillText("coin grouping   " + (arpeggio ? "arpeggio" : "all at once"), 22, 108);
+  ctx.fillStyle = Sound.randomPitch ? "#51cf66" : "#6b7480";
+  ctx.fillText("random pitch    " + (Sound.randomPitch ? "on" : "off"), 22, 126);
+
+  if (eventFlash > 0) {
+    ctx.font = "bold 14px system-ui, sans-serif";
+    ctx.fillStyle = "rgba(255,212,59," + Math.min(1, eventFlash) + ")";
+    ctx.fillText(lastEvent, 330, 32);
+  }
+
+  ctx.font = "12px system-ui, sans-serif";
+  ctx.fillStyle = "#6b7480";
+  ctx.fillText("the game calls Sound.coin(), Sound.jump(), Sound.hit().", 22, canvas.height - 28);
+  ctx.fillText("It has never heard of an oscillator.", 22, canvas.height - 12);
+  ctx.fillStyle = "#4a5362";
+  ctx.fillText("state: " + (Sound.audio ? Sound.audio.state : "not created"),
+               canvas.width - 190, canvas.height - 12);
+}
+
+let lastTime = 0;
+function frame(now) {
+  let dt = (now - lastTime) / 1000;
+  lastTime = now;
+  if (dt > 0.05) { dt = 0.05; }
+  update(dt);
+  draw();
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
