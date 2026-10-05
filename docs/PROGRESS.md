@@ -126,7 +126,7 @@ lesson must pass before it is ticked here.
 
 | | |
 |---|---|
-| Lessons authored | 12 of 12 (web) · 0 of 12 (python) · 0 of 12 (c++) |
+| Lessons authored | 12 of 12 (web) · **6 of 12 (python)** · 0 of 12 (c++) |
 | Code examples | 48 pages plus a 15-module capstone game |
 | New shared visualizers | 10, bringing the gallery to 19 |
 | Handout PDFs | 12, committed |
@@ -163,6 +163,27 @@ lesson must pass before it is ticked here.
 | `enemy-ai.html` | hysteresis: set the give-up gap to zero and count the state changes |
 | `save-round-trip.html` | six of ten values come back different, and one complains |
 | (`gravity-and-velocity.html` re-used for the capstone's apex) | |
+
+### `games_with_py/intermediate_lvl` — 6 of 12
+
+| # | Lesson | notes | code | exercises | solutions | handout |
+|---|---|---|---|---|---|---|
+| 1 | Hello pygame-ce | ✅ | ✅ 4 | ✅ | ✅ | ⬜ |
+| 2 | Rects, images and the display | ✅ | ✅ 4 | ✅ | ✅ | ⬜ |
+| 3 | Vector2 | ✅ | ✅ 4 | ✅ | ✅ | ⬜ |
+| 4 | Sprites and Groups | ✅ | ✅ 4 | ✅ | ✅ | ⬜ |
+| 5 | Sprite animation | ✅ | ✅ 4 + 1 shared | ✅ | ✅ | ⬜ |
+| 6 | Tilemaps | ✅ | ✅ 4 + 1 shared + 2 level files | ✅ | ✅ | ⬜ |
+| 7–12 | specified, not yet authored | ⬜ | ⬜ | ⬜ | ⬜ | ⬜ |
+
+Plus `INSTALL.md` (pygame vs pygame-ce, venvs, `externally-managed-environment`, and what to do when
+school IT blocks `pip`) and the level `README.md`.
+
+**Handouts for this track are not built yet** — they are generated in one pass per level, and that is
+worth doing once the twelve lessons exist rather than twice.
+
+Forward references in these notes to lessons 7–12 are deliberately **plain text** rather than links, so
+that the link checker stays honest about what exists. They become links as each lesson is written.
 
 ### Tooling added in this phase
 

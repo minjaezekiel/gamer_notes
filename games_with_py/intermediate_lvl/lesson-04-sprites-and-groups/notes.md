@@ -21,8 +21,8 @@ know than how to use it.
 
 - **Back:** [lesson 2](../lesson-02-rects-images-and-the-display/notes.md) gave you `Surface` and
   `Rect` — which turn out to be exactly what a `Sprite` is made of.
-- **Forward:** everything from here uses groups. [Lesson 10](../lesson-10-enemies-waves-and-simple-ai/notes.md)
-  spawns waves into them and [lesson 12](../lesson-12-capstone-an-arcade-shooter/notes.md) is built on them.
+- **Forward:** everything from here uses groups. Lesson 10 *(not yet written)*
+  spawns waves into them and lesson 12 *(not yet written)* is built on them.
 - **Other tracks:** the web and C++ tracks keep plain arrays of entities and write the loops by hand.
   This is the first time this course uses a library's own system rather than building one — so the
   interesting question today is *what you gave up in exchange*.

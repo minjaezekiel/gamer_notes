@@ -26,7 +26,7 @@ is about *which clock decides when*.
 
 - **Back:** [lesson 2](../lesson-02-rects-images-and-the-display/notes.md) made Surfaces and blitted
   parts of them; [lesson 4](../lesson-04-sprites-and-groups/notes.md) made `self.image` a requirement.
-- **Forward:** [lesson 9](../lesson-09-platform-physics/notes.md) gives this character gravity and a
+- **Forward:** lesson 9 *(not yet written)* gives this character gravity and a
   jump, and the animation states are already waiting for it.
 - **Other tracks:** `webgames` intermediate lesson 4 is this lesson with `drawImage` instead of
   `subsurface`. The two clocks are the same two clocks.

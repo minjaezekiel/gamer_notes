@@ -94,13 +94,15 @@ def find_examples(only: str | None) -> tuple[list[Path], list[Path]]:
         text = path.read_text(encoding="utf-8", errors="replace")
         if "import pygame" not in text:
             continue
+        # --only must be applied BEFORE the module/example split, or shared
+        # modules slip past the filter and the counts stop matching the request.
+        if only and only not in str(path):
+            continue
         # A shared content module (see COURSE_SPEC section 9) opens no window, so
         # running it proves only that it imports. That is still worth doing, and
         # it is labelled differently so the output does not claim more than it did.
         if "set_mode" not in text:
             modules.append(path)
-            continue
-        if only and only not in str(path):
             continue
         found.append(path)
     return found, modules

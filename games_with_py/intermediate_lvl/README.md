@@ -34,17 +34,20 @@ but a browser.
 | 4 | [Sprites and Groups](lesson-04-sprites-and-groups/notes.md) | a hundred things at once | pygame's **sprite system** |
 | 5 | [Sprite animation](lesson-05-sprite-animation/notes.md) | a character that walks | **two clocks** |
 | 6 | [Tilemaps](lesson-06-tilemaps/notes.md) | a world from a text file | **axis-separated collision** |
-| 7 | [Cameras and scrolling worlds](lesson-07-cameras-and-scrolling-worlds/notes.md) | a world bigger than the window | **one subtraction** |
-| 8 | [Sound and music](lesson-08-sound-and-music/notes.md) | a game you can hear | the **mixer**, and latency |
-| 9 | [Platform physics](lesson-09-platform-physics/notes.md) | a platformer jump | gravity, and **coyote time** |
-| 10 | [Enemies, waves and simple AI](lesson-10-enemies-waves-and-simple-ai/notes.md) | waves that get harder | **difficulty as data** |
-| 11 | [Menus, scenes and save files](lesson-11-menus-scenes-and-save-files/notes.md) | title, pause, settings | a **scene stack**, and JSON |
-| 12 | [**Capstone: an arcade shooter**](lesson-12-capstone-an-arcade-shooter/notes.md) | a complete game | all of it, assembled |
+| 7 | Cameras and scrolling worlds | a world bigger than the window | **one subtraction** |
+| 8 | Sound and music | a game you can hear | the **mixer**, and latency |
+| 9 | Platform physics | a platformer jump | gravity, and **coyote time** |
+| 10 | Enemies, waves and simple AI | waves that get harder | **difficulty as data** |
+| 11 | Menus, scenes and save files | title, pause, settings | a **scene stack**, and JSON |
+| 12 | **Capstone: an arcade shooter** | a complete game | all of it, assembled |
+
+Lessons 1–6 are written. **Lessons 7–12 are specified but not yet authored** — they are listed above so
+the shape of the level is visible, and they appear as plain text rather than links until they exist.
 
 Each lesson folder holds `notes.md` (read this), `code/` (run these, in order),
 `exercises.md` (the handout's source) and `solutions/` (for the teacher).
 
-Printable handouts: [`handouts/`](handouts/).
+Printable handouts will land in `handouts/` as the lessons are written.
 
 ---
 
