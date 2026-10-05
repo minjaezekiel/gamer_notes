@@ -80,6 +80,14 @@ if ! python3 tools/check_turtle.py; then
 fi
 
 # ---------------------------------------------------------------------------
+# 2bb. pygame examples - actually RUN them, with SDL's dummy drivers
+# ---------------------------------------------------------------------------
+note "pygame (run headlessly)"
+if ! python3 tools/check_pygame.py; then
+  FAILED=$((FAILED+1))
+fi
+
+# ---------------------------------------------------------------------------
 # 2c. logic tests (any test_*.py in the repo)
 # ---------------------------------------------------------------------------
 note "Logic tests"
@@ -109,7 +117,10 @@ fi
 note "Conventions"
 
 # No CDN script tags anywhere: a lesson must not fail when the Wi-Fi is down.
-if CDN=$(grep -rlE '<script[^>]+src="https?://' --include='*.html' . 2>/dev/null); then
+# --exclude-dir keeps tools/.venv out of this: pygame ships its own HTML docs,
+# which do use CDN script tags, and they are not course content.
+if CDN=$(grep -rlE '<script[^>]+src="https?://' --include='*.html' \
+           --exclude-dir=.venv --exclude-dir=node_modules . 2>/dev/null); then
   if [ -n "$CDN" ]; then
     bad "external <script src> found - lessons must work offline:"
     printf '        %s\n' "$CDN"

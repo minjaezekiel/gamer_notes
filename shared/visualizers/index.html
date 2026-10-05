@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Visualizer Gallery</title>
-<meta name="description" content="Every animated concept explainer in the Game Dev Bootcamp, in teaching order. Open this at the start of class.">
+<meta name="description" content="All nineteen animated concept explainers in the Game Dev Bootcamp, in teaching order. Open this at the start of class.">
 <link rel="stylesheet" href="../css/notes.css">
 <link rel="stylesheet" href="../css/code.css">
 </head>
@@ -14,7 +14,7 @@
   <header class="lesson-head">
     <p class="kicker">Game Dev Bootcamp &middot; Teacher launcher</p>
     <h1>Visualizer Gallery</h1>
-    <p class="meta">Nine animated explainers. Open this page at the start of class and project from here.</p>
+    <p class="meta">Nineteen animated explainers. Open this page at the start of class and project from here.</p>
   </header>
 
   <p class="lede">These explainers are <strong>language-neutral</strong>. The game loop, delta time and
@@ -107,6 +107,83 @@
     </a></li>
   </ul>
 
+  <h2>Intermediate and advanced</h2>
+
+  <p class="lede">These ten pick up where the first nine stop. The same rules apply: step before you
+  play, and ask for a prediction first.</p>
+
+  <ul class="gallery">
+    <li><a href="module-dependencies.html">
+      <h3>10. Which Way Do Dependencies Point?</h3>
+      <p>Seven files resolved one per Step press, building a safe load order &mdash; then one extra
+      arrow makes the answer impossible. Kahn's algorithm without the name.</p>
+      <span class="where">web I-L1 &middot; python A-L2 &middot; c++ I-L3 and A-L11</span>
+    </a></li>
+
+    <li><a href="acceleration-and-friction.html">
+      <h3>11. Acceleration, Friction and Drag</h3>
+      <p>Drag the target and watch the ship overshoot it. Friction at zero and it orbits for ever.
+      Includes the per-frame friction bug, visible as sluggishness.</p>
+      <span class="where">web I-L3 and I-L9 &middot; python I-L3 &middot; c++ I-L5</span>
+    </a></li>
+
+    <li><a href="sprite-animation.html">
+      <h3>12. Spritesheets and Animation</h3>
+      <p>Two clocks, and they are not the same clock. The timer bar fills; the pose changes. Then
+      &ldquo;advance every game frame&rdquo; turns a walk into a vibration.</p>
+      <span class="where">web I-L4 &middot; python I-L5 &middot; c++ I-L7</span>
+    </a></li>
+
+    <li><a href="tile-collision.html">
+      <h3>13. Tile Collision, One Axis at a Time</h3>
+      <p>Two corrections, each in its own colour, and only the four tiles the box touches ever
+      tested. Switch to one combined move and the player climbs the wall.</p>
+      <span class="where">web I-L5 and I-L12 &middot; python I-L6 and I-L9 &middot; c++ I-L8</span>
+    </a></li>
+
+    <li><a href="camera.html">
+      <h3>14. The Camera</h3>
+      <p>The same moment in world space and screen space, side by side, with the subtraction spelled
+      out underneath. The dead zone is where the lesson lands.</p>
+      <span class="where">web I-L6 &middot; python I-L7 &middot; c++ I-L9</span>
+    </a></li>
+
+    <li><a href="easing.html">
+      <h3>15. Tweens and Easing</h3>
+      <p>Five dots leave together and arrive together, and only one looks mechanical. Easing is
+      reshaping time, not changing speed.</p>
+      <span class="where">web I-L9 and I-L7 &middot; python I-L11 &middot; c++ I-L12</span>
+    </a></li>
+
+    <li><a href="audio-envelope.html">
+      <h3>16. Why Sounds Need An Envelope</h3>
+      <p>Silent on purpose. Switch the envelope off and the vertical edge in the waveform <em>is</em>
+      the click &mdash; so the ramp stops being a ritual.</p>
+      <span class="where">web I-L8 &middot; python I-L8 &middot; c++ I-L10</span>
+    </a></li>
+
+    <li><a href="enemy-ai.html">
+      <h3>17. Enemies That Seem To Think</h3>
+      <p>Drag the player and watch the state box, not the code. Set the give-up gap to zero, walk the
+      edge, and the guard changes its mind several times a second.</p>
+      <span class="where">web I-L10 &middot; python I-L10 &middot; c++ I-L11</span>
+    </a></li>
+
+    <li><a href="save-round-trip.html">
+      <h3>18. What Survives A Save</h3>
+      <p>Four Step presses walk an object through stringify, storage and parse. Six of ten values
+      come back different, and only one of them complains.</p>
+      <span class="where">web I-L11 &middot; python A-L3 &middot; c++ A-L8</span>
+    </a></li>
+
+    <li><a href="gravity-and-velocity.html">
+      <h3>19. Gravity, Velocity, Position <span class="where">(again)</span></h3>
+      <p>Worth revisiting for the capstone: step a jump and watch <code>vy</code> cross zero at the
+      apex. That single frame is what apex hang time acts on.</p>
+      <span class="where">web I-L12 &middot; all capstones</span>
+    </a></li>
+  </ul>
+
   <h2>Which explainer for which lesson</h2>
 
   <div class="table-scroll">
@@ -121,6 +198,30 @@
       <tr><td><strong>L4</strong></td><td>AABB, circles</td><td>AABB, circles, grids</td><td>AABB, grids</td></tr>
       <tr><td><strong>L5</strong></td><td>state machine</td><td>gravity</td><td>circles, gravity</td></tr>
       <tr><td><strong>L6</strong></td><td>gravity, grids</td><td>state machine</td><td>state machine</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h2>Which explainer for which intermediate lesson</h2>
+
+  <div class="table-scroll">
+  <table>
+    <thead>
+      <tr><th>Lesson</th><th>webgames</th><th>games_with_py</th><th>games_with_cpp</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><strong>I-L1</strong></td><td>dependencies</td><td>&mdash;</td><td>&mdash;</td></tr>
+      <tr><td><strong>I-L2</strong></td><td>vectors</td><td>&mdash;</td><td>&mdash;</td></tr>
+      <tr><td><strong>I-L3</strong></td><td>acceleration, easing</td><td>vectors</td><td>dependencies</td></tr>
+      <tr><td><strong>I-L4</strong></td><td>spritesheets</td><td>&mdash;</td><td>&mdash;</td></tr>
+      <tr><td><strong>I-L5</strong></td><td>tile collision, grids</td><td>spritesheets</td><td>acceleration</td></tr>
+      <tr><td><strong>I-L6</strong></td><td>camera</td><td>tile collision</td><td>&mdash;</td></tr>
+      <tr><td><strong>I-L7</strong></td><td>state machine, easing</td><td>camera</td><td>spritesheets</td></tr>
+      <tr><td><strong>I-L8</strong></td><td>audio envelope</td><td>audio envelope</td><td>tile collision</td></tr>
+      <tr><td><strong>I-L9</strong></td><td>easing, acceleration</td><td>tile collision</td><td>camera</td></tr>
+      <tr><td><strong>I-L10</strong></td><td>enemy AI</td><td>enemy AI</td><td>audio envelope</td></tr>
+      <tr><td><strong>I-L11</strong></td><td>save round trip</td><td>save round trip, easing</td><td>enemy AI</td></tr>
+      <tr><td><strong>I-L12</strong></td><td>gravity, tile collision</td><td>&mdash;</td><td>easing</td></tr>
     </tbody>
   </table>
   </div>

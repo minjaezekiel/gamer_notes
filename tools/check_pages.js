@@ -185,7 +185,8 @@ function chromeCheck(file, profileDir, port) {
 
       // Page console output and uncaught exceptions. macOS GPU / display-link
       // noise is about the host, not the page, so it is not matched here.
-      const noisy = log.split('\n').filter(l => /INFO:CONSOLE|WARNING:CONSOLE|Uncaught/.test(l));
+      const noisy = log.split('\n')
+        .filter(l => /INFO:CONSOLE|WARNING:CONSOLE|ERROR:CONSOLE|Uncaught/.test(l));
       if (noisy.length) {
         return resolve({ file, err: 'console output on load:\n        ' +
           noisy.slice(0, 4).map(s => s.trim()).join('\n        ') });

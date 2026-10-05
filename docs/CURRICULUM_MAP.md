@@ -1,8 +1,8 @@
 # CURRICULUM_MAP — all 90 lessons
 
-The full shape of the course. Phase 1 authors the 18 beginner lessons; the other 72 are specified
-here so that later sessions can resume without re-deriving the design, and so a teacher can see
-where the course is heading from day one.
+The full shape of the course. Authored so far: the **18 beginner lessons** and the **12 web
+intermediate lessons** (30 of 90). The rest are specified here so that later sessions can resume
+without re-deriving the design, and so a teacher can see where the course is heading from day one.
 
 **Legend:** ✅ authored · 🟡 in progress · ⬜ specified, not yet authored
 
@@ -45,18 +45,18 @@ what makes the idea stick.
 
 | # | Title | Core concept | State |
 |---|---|---|---|
-| 1 | One file becomes many | ES modules, a `Game` object, dependency direction | ⬜ |
-| 2 | Vectors for real | a `Vec2`, magnitude, direction, normalising | ⬜ |
-| 3 | Acceleration, friction and drag | a ship that feels good to fly | ⬜ |
-| 4 | Sprites and spritesheets | `drawImage`, source rects, animation frames | ⬜ |
-| 5 | Tilemaps | levels as 2-D arrays, drawing a world, tile collision | ⬜ |
-| 6 | The camera | scrolling, following the player, world vs screen space | ⬜ |
-| 7 | Scenes, properly | menu / play / pause / transitions as a real state machine | ⬜ |
-| 8 | Sound design with Web Audio | SFX, music, why audio timing is unforgiving | ⬜ |
-| 9 | Particles and juice engineering | emitters, tweens, easing, screen shake | ⬜ |
-| 10 | Enemies that seem to think | patrol, chase, flee; state-driven AI | ⬜ |
-| 11 | Saving and loading | `localStorage`, JSON, high scores, settings | ⬜ |
-| 12 | **Capstone: a platformer** | gravity, jumping, coyote time, a complete small game | ⬜ |
+| 1 | One file becomes many | ES modules, a `Game` object, dependency direction | ✅ |
+| 2 | Vectors for real | a `Vec2`, magnitude, direction, normalising | ✅ |
+| 3 | Acceleration, friction and drag | a ship that feels good to fly | ✅ |
+| 4 | Sprites and spritesheets | `drawImage`, source rects, animation frames | ✅ |
+| 5 | Tilemaps | levels as 2-D arrays, drawing a world, tile collision | ✅ |
+| 6 | The camera | scrolling, following the player, world vs screen space | ✅ |
+| 7 | Scenes, properly | menu / play / pause / transitions as a real state machine | ✅ |
+| 8 | Sound design with Web Audio | SFX, music, why audio timing is unforgiving | ✅ |
+| 9 | Particles and juice engineering | emitters, tweens, easing, screen shake | ✅ |
+| 10 | Enemies that seem to think | patrol, chase, flee; state-driven AI | ✅ |
+| 11 | Saving and loading | `localStorage`, JSON, high scores, settings | ✅ |
+| 12 | **Capstone: a platformer** | gravity, jumping, coyote time, a complete small game | ✅ |
 
 ### `advanced_lvl/` — 12 lessons, 30 h
 

@@ -1,0 +1,163 @@
+<!doctype html>
+<!-- ===========================================================================
+     02-what-json-keeps.html — the round trip, with real values.
+
+     WHAT THIS DEMONSTRATES
+     Every row below is put through JSON.stringify and JSON.parse for real, and
+     the result is compared with what went in. Nothing is hard-coded: the "came
+     back" column is computed, so you can add your own rows and find out.
+
+     Six of the ten do not survive, and only ONE of them complains.
+
+     HOW TO RUN IT
+     Double-click. Press A to add a value of your own (it asks you for an
+     expression), or just read the table.
+
+     WHAT TO CHANGE FIRST
+     Add these to the VALUES list and predict each one before you reload:
+         ["-0", function () { return -0; }]
+         ["big", function () { return 12345678901234567890; }]
+         ["nested undefined", function () { return { a: [1, undefined, 3] }; }]
+     The last one is the surprise: inside an ARRAY, undefined becomes null rather
+     than disappearing.
+     ======================================================================== -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>What JSON keeps</title>
+<style>
+  body { background: #11151c; color: #e7ecf3; font-family: system-ui, sans-serif;
+         display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 16px; }
+  table { border-collapse: collapse; font-size: 13px; max-width: 900px; }
+  th, td { padding: 6px 10px; border-bottom: 1px solid #1d242e; text-align: left;
+           vertical-align: top; font-family: ui-monospace, Menlo, monospace; }
+  th { color: #8793a4; font-family: system-ui, sans-serif; font-size: 12px; }
+  td.note { font-family: system-ui, sans-serif; color: #8793a4; }
+  tr.lost td { color: #ff6b6b; }
+  tr.kept td { color: #51cf66; }
+  p { max-width: 650px; font-size: 14.5px; line-height: 1.5; color: #a9b4c4; }
+  b { color: #ffd43b; }
+  #summary { font-size: 15px; font-weight: 600; }
+</style>
+</head>
+<body>
+<h1>What survives, for real</h1>
+<p>Each row is actually round-tripped through <code>JSON.stringify</code> and
+   <code>JSON.parse</code>. The last column is <b>computed</b>, not written down,
+   so you can add rows and find out for yourself.</p>
+<div id="summary"></div>
+<table id="t">
+  <thead>
+    <tr><th>field</th><th>what went in</th><th>the JSON text</th><th>what came back</th><th>verdict</th></tr>
+  </thead>
+  <tbody></tbody>
+</table>
+
+<script>
+/* Each entry builds its value in a function, because some of them (a circular
+   reference) cannot be written as a literal in a list. */
+const VALUES = [
+  ["score",    function () { return 1200; },                       "a number"],
+  ["name",     function () { return "Ada"; },                      "a string"],
+  ["alive",    function () { return true; },                       "a boolean"],
+  ["unlocked", function () { return [1, 2, 5]; },                  "an array"],
+  ["nested",   function () { return { a: 1, b: { c: 2 } }; },       "a plain object"],
+  ["nothing",  function () { return null; },                       "null"],
+  ["dash",     function () { return function () { return 1; }; },  "a function"],
+  ["combo",    function () { return undefined; },                  "undefined"],
+  ["best",     function () { return Infinity; },                   "Infinity"],
+  ["broken",   function () { return NaN; },                        "NaN"],
+  ["when",     function () { return new Date(0); },                "a Date"],
+  ["seen",     function () { return new Set([1, 2]); },            "a Set"],
+  ["lookup",   function () { return new Map([["a", 1]]); },         "a Map"],
+  ["parent",   function () { const o = { n: 1 }; o.self = o; return o; }, "circular"]
+];
+
+function describe(v) {
+  if (v === undefined) { return "(key absent)"; }
+  if (v === null) { return "null"; }
+  if (typeof v === "function") { return "function"; }
+  if (typeof v === "string") { return JSON.stringify(v); }
+  if (typeof v === "object") {
+    try { return JSON.stringify(v); } catch (e) { return "[unprintable]"; }
+  }
+  return String(v);
+}
+
+/* Compare what went in with what came back, as honestly as a short function can.
+   The interesting cases are the ones where both sides look similar and are not. */
+function verdict(before, after, absent) {
+  if (typeof before === "function") { return absent ? "DROPPED" : "changed"; }
+  if (before === undefined) { return absent ? "DROPPED" : "changed"; }
+  if (typeof before === "number" && !isFinite(before)) {
+    return after === null ? "became null" : "changed";
+  }
+  if (before instanceof Date) { return typeof after === "string" ? "became a string" : "changed"; }
+  if (before instanceof Set || before instanceof Map) {
+    return "became " + describe(after);
+  }
+  if (before === null) { return after === null ? "kept" : "changed"; }
+  if (typeof before === "object") {
+    return JSON.stringify(before) === JSON.stringify(after) ? "kept" : "changed";
+  }
+  return before === after ? "kept" : "changed";
+}
+
+const body = document.querySelector("#t tbody");
+let kept = 0, lost = 0;
+
+for (let i = 0; i < VALUES.length; i++) {
+  const key = VALUES[i][0];
+  const make = VALUES[i][1];
+  const note = VALUES[i][2];
+
+  let before, text, after, absent = false, threw = "";
+  try {
+    before = make();
+    const wrapper = {};
+    wrapper[key] = before;
+    text = JSON.stringify(wrapper);
+    const parsed = JSON.parse(text);
+    absent = !(key in parsed);
+    after = parsed[key];
+  } catch (err) {
+    threw = err.name;
+  }
+
+  const row = document.createElement("tr");
+  let v;
+  if (threw) {
+    v = "THREW (" + threw + ")";
+  } else {
+    v = verdict(before, after, absent);
+  }
+  const isKept = v === "kept";
+  row.className = isKept ? "kept" : "lost";
+  if (isKept) { kept += 1; } else { lost += 1; }
+
+  const cells = [
+    key,
+    threw ? "—" : describe(before),
+    threw ? "—" : String(text).slice(0, 34),
+    threw ? "—" : (absent ? "(key absent)" : describe(after)),
+    v
+  ];
+  for (let c = 0; c < cells.length; c++) {
+    const td = document.createElement("td");
+    td.textContent = cells[c];
+    row.appendChild(td);
+  }
+  const td = document.createElement("td");
+  td.className = "note";
+  td.textContent = note;
+  row.appendChild(td);
+  body.appendChild(row);
+}
+
+document.getElementById("summary").innerHTML =
+  '<span style="color:#51cf66">' + kept + ' survived</span> &nbsp; ' +
+  '<span style="color:#ff6b6b">' + lost + ' did not</span> &nbsp; ' +
+  '<span style="color:#8793a4">and only the circular reference threw.</span>';
+</script>
+</body>
+</html>

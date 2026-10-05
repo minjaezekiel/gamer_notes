@@ -1,0 +1,162 @@
+<!doctype html>
+<!-- ===========================================================================
+     selftest.html — plays the game with nobody watching.
+
+     WHY THIS EXISTS
+     Loading a page only proves the title screen drew. It does not run the jump,
+     the collision, the enemies or the particles - which is where the bugs are.
+
+     This page starts the real game, dispatches real keyboard events to drive it,
+     runs 400 frames as fast as it can, and then checks a short list of things that
+     must be true:
+
+       * nothing threw
+       * the player's position and velocity are FINITE (this is the NaN check, and
+         NaN is the failure that produces no error of its own)
+       * the player never leaves the world
+       * the particle pool never exceeds its size
+       * the play scene actually ran
+
+     tools/check_pages.js loads this page like any other, so if a check fails the
+     thrown error lands in the console where the checker can see it. That is how a
+     game gets tested without a person.
+
+     HOW TO RUN IT
+     It needs a server, like the game:
+         python3 -m http.server 8000
+     then open http://localhost:8000/selftest.html
+     ======================================================================== -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Capstone self test</title>
+<style>
+  body { background: #0b0e13; color: #e7ecf3; font-family: ui-monospace, Menlo, monospace;
+         padding: 20px; line-height: 1.6; }
+  canvas { border: 1px solid #2b3240; display: block; margin: 12px 0; }
+  .pass { color: #51cf66; }
+  .fail { color: #ff6b6b; }
+  h1 { font-family: system-ui, sans-serif; font-size: 20px; }
+</style>
+</head>
+<body>
+<h1>Capstone self test</h1>
+<canvas id="game" width="720" height="440"></canvas>
+<div id="out">running…</div>
+
+<script type="module">
+import * as Input from "./input.js";
+import * as Scenes from "./scenes.js";
+import * as Sound from "./sound.js";
+import * as Particles from "./particles.js";
+import { MAX_PARTICLES } from "./config.js";
+import { WORLD_WIDTH, WORLD_HEIGHT } from "./level.js";
+
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+const out = document.getElementById("out");
+
+const results = [];
+function check(name, ok, detail) {
+  results.push({ name: name, ok: ok, detail: detail || "" });
+}
+
+/* Real keyboard events, so the game's own input code is what is being tested
+   rather than a stub of it. */
+function key(type, k) {
+  document.dispatchEvent(new KeyboardEvent(type, { key: k, bubbles: true }));
+}
+
+/* Muted on purpose: a synthetic key press does not count as a user gesture, so a
+   browser would refuse to start the audio and warn about it on every sound. */
+Sound.setMuted(true);
+
+Input.start();
+Scenes.init(canvas.width, canvas.height);
+Scenes.applyPending();
+
+/* press space to leave the title screen */
+key("keydown", " ");
+
+/* 400 frames is about seven seconds of play - enough to jump, land, hit a
+   wall, collect, pause and unpause - and it keeps this page comfortably
+   inside the 45 s per-page limit in tools/check_pages.js. 900 was close
+   enough to that limit to make the suite flaky. */
+const FRAMES = 400;
+const DT = 1 / 60;
+let playFrames = 0;
+let worstX = 0, worstY = 0;
+let sawNaN = false;
+let threw = null;
+
+try {
+  for (let f = 0; f < FRAMES; f++) {
+    /* a crude autopilot: run right, jump every 24 frames, occasionally go left */
+    if (f % 24 === 0) { key("keydown", " "); }
+    if (f % 24 === 6) { key("keyup", " "); }
+    if (f === 1) { key("keyup", " "); key("keydown", "ArrowRight"); }
+    if (f % 180 === 150) { key("keyup", "ArrowRight"); key("keydown", "ArrowLeft"); }
+    if (f % 180 === 170) { key("keyup", "ArrowLeft"); key("keydown", "ArrowRight"); }
+    if (f === 400) { key("keydown", "p"); }        /* pause */
+    if (f === 402) { key("keyup", "p"); }
+    if (f === 420) { key("keydown", "p"); }        /* unpause */
+    if (f === 422) { key("keyup", "p"); }
+
+    Scenes.update(DT);
+    Scenes.draw(ctx);
+    Scenes.applyPending();
+    Input.endFrame();
+
+    const names = Scenes.stackNames();
+    if (names.indexOf("play") >= 0) { playFrames += 1; }
+
+    /* scenes.js exports a getter for the current world, which is the only hook
+       this test needs. */
+    const w = Scenes.currentWorld();
+    if (w && w.player) {
+      const p = w.player;
+      if (!isFinite(p.x) || !isFinite(p.y) || !isFinite(p.vx) || !isFinite(p.vy)) {
+        sawNaN = true;
+      }
+      worstX = Math.max(worstX, Math.abs(p.x));
+      worstY = Math.max(worstY, Math.abs(p.y));
+    }
+  }
+} catch (err) {
+  threw = err;
+}
+
+check("ran " + FRAMES + " frames without throwing", threw === null,
+      threw ? (threw.name + ": " + threw.message) : "");
+check("the play scene ran", playFrames > 100, "play frames: " + playFrames);
+check("no NaN in the player's position or velocity", !sawNaN);
+check("the player stayed inside the world",
+      worstX <= WORLD_WIDTH + 200 && worstY <= WORLD_HEIGHT + 300,
+      "max |x| " + Math.round(worstX) + ", max |y| " + Math.round(worstY));
+check("the particle pool was not exceeded",
+      Particles.countAlive() <= MAX_PARTICLES,
+      Particles.countAlive() + " alive of " + MAX_PARTICLES);
+
+let failures = 0;
+let html = "";
+for (let i = 0; i < results.length; i++) {
+  const r = results[i];
+  if (!r.ok) { failures += 1; }
+  html += '<div class="' + (r.ok ? "pass" : "fail") + '">' +
+          (r.ok ? "PASS  " : "FAIL  ") + r.name +
+          (r.detail ? "   (" + r.detail + ")" : "") + "</div>";
+}
+html += "<br><strong>" + (failures === 0
+  ? '<span class="pass">all ' + results.length + " checks passed</span>"
+  : '<span class="fail">' + failures + " of " + results.length + " failed</span>") +
+  "</strong>";
+out.innerHTML = html;
+
+/* Throwing is how the automated checker finds out. An uncaught error appears in
+   the browser console, which tools/check_pages.js reads. */
+if (failures > 0) {
+  throw new Error("capstone self test: " + failures + " check(s) failed");
+}
+</script>
+</body>
+</html>

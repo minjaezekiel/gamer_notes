@@ -1,0 +1,258 @@
+<!doctype html>
+<!-- ===========================================================================
+     01-storage-that-cannot-crash.html — the twenty lines you reuse for ever.
+
+     WHAT THIS DEMONSTRATES
+       * Store.init / load / save, each wrapped in try/catch
+       * every load takes a FALLBACK, so "no save yet" is never a special case
+       * a switch that pretends storage is blocked, so you can watch the game keep
+         working - which is the behaviour you cannot test by playing normally
+       * that getItem returns a STRING: "4200" + 1 is "42001"
+
+     HOW TO RUN IT
+     Double-click. Click the buttons, or:
+       S  save      L  load      X  clear      B  pretend storage is blocked
+       N  save the number WITHOUT converting it on the way back (the string bug)
+
+     WHAT TO CHANGE FIRST
+     Press B, then press S and L. Nothing throws, nothing breaks, and the counter
+     simply stops persisting. That is what "works without storage" means.
+
+     Then open this page in a PRIVATE WINDOW. Real browsers behave like B.
+     ======================================================================== -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Storage that cannot crash</title>
+<style>
+  body { background: #11151c; color: #e7ecf3; font-family: system-ui, sans-serif;
+         display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 16px; }
+  canvas { background: #0a0d12; border: 2px solid #2b3240; border-radius: 6px; }
+  #buttons { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+  button { background: #1b2130; color: #e7ecf3; border: 1px solid #2b3240;
+           border-radius: 6px; padding: 8px 12px; font-size: 13.5px; cursor: pointer; }
+  button:hover { background: #253044; }
+  p { max-width: 640px; font-size: 14.5px; line-height: 1.5; color: #a9b4c4; }
+  b { color: #ffd43b; }
+</style>
+</head>
+<body>
+<h1>Storage that cannot crash</h1>
+<canvas id="view" width="680" height="340"></canvas>
+<div id="buttons">
+  <button id="bAdd">+10 to the counter</button>
+  <button id="bSave">S &mdash; save</button>
+  <button id="bLoad">L &mdash; load</button>
+  <button id="bClear">X &mdash; clear</button>
+  <button id="bBlock">B &mdash; pretend blocked</button>
+  <button id="bString">N &mdash; the string bug</button>
+</div>
+<p>Click <b>+10</b> a few times, <b>save</b>, reload the page, then <b>load</b>.
+   Then press <b>B</b> and do it again.</p>
+
+<script>
+/* ---------------------------------------------------------------------------
+   THE STORAGE LAYER. Reuse this file in every project.
+
+   Why every access is wrapped: in a private window, or with site data blocked,
+   localStorage does not return null - it THROWS. An uncaught throw at startup
+   means the game never runs, for a player you will never see.
+   ------------------------------------------------------------------------ */
+let pretendBlocked = false;
+
+const Store = {
+  available: false,
+  lastError: "",
+
+  init: function () {
+    if (pretendBlocked) { this.available = false; this.lastError = "pretending"; return; }
+    try {
+      localStorage.setItem("__probe", "1");
+      localStorage.removeItem("__probe");
+      this.available = true;
+      this.lastError = "";
+    } catch (err) {
+      /* Blocked, private, full, or disabled. All of these are fine. */
+      this.available = false;
+      this.lastError = err.name + ": " + err.message;
+    }
+  },
+
+  load: function (key, fallback) {
+    if (!this.available) { return fallback; }
+    try {
+      const text = localStorage.getItem(key);
+      /* getItem gives null when nothing is there. JSON.parse(null) returns null
+         rather than throwing, which is worse - so test for it explicitly. */
+      if (text === null) { return fallback; }
+      return JSON.parse(text);
+    } catch (err) {
+      this.lastError = err.name + ": " + err.message;
+      return fallback;
+    }
+  },
+
+  save: function (key, value) {
+    if (!this.available) { return false; }
+    try {
+      localStorage.setItem(key, JSON.stringify(value));
+      return true;
+    } catch (err) {
+      /* Most likely the quota. Report it; do not die of it. */
+      this.lastError = err.name + ": " + err.message;
+      return false;
+    }
+  },
+
+  remove: function (key) {
+    if (!this.available) { return; }
+    try { localStorage.removeItem(key); } catch (err) { this.lastError = String(err); }
+  },
+
+  /* For the display only: what is actually in the box. */
+  dump: function () {
+    if (!this.available) { return []; }
+    const out = [];
+    try {
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        out.push({ key: k, value: String(localStorage.getItem(k)).slice(0, 44) });
+      }
+    } catch (err) { /* ignore */ }
+    return out;
+  }
+};
+
+Store.init();
+
+const KEY = "lesson11-counter";
+let counter = 0;
+let message = "nothing yet";
+let messageGood = true;
+let stringBugResult = "";
+
+function setMessage(text, good) { message = text; messageGood = good !== false; }
+
+function doSave() {
+  const ok = Store.save(KEY, { counter: counter, savedAt: Date.now() });
+  setMessage(ok ? "saved " + counter
+                : "could not save — storage is not available. The game continues.", ok);
+}
+
+function doLoad() {
+  /* The FALLBACK means "no save yet" needs no special case anywhere. */
+  const data = Store.load(KEY, { counter: 0, savedAt: 0 });
+  counter = typeof data.counter === "number" && isFinite(data.counter) ? data.counter : 0;
+  setMessage(data.savedAt
+    ? "loaded " + counter + " (saved " +
+      Math.round((Date.now() - data.savedAt) / 1000) + " s ago)"
+    : "no save found — using the fallback, which is 0", true);
+}
+
+function doStringBug() {
+  if (!Store.available) { stringBugResult = "storage unavailable"; return; }
+  try {
+    localStorage.setItem("lesson11-raw", 4200);        // a number goes in
+    const raw = localStorage.getItem("lesson11-raw");  // a STRING comes out
+    stringBugResult = 'getItem gave ' + JSON.stringify(raw) + " (a " + typeof raw + ")" +
+                      "   raw + 1 = " + JSON.stringify(raw + 1) +
+                      "   Number(raw) + 1 = " + (Number(raw) + 1);
+  } catch (err) {
+    stringBugResult = "threw: " + err.name;
+  }
+}
+
+document.getElementById("bAdd").addEventListener("click", function () { counter += 10; });
+document.getElementById("bSave").addEventListener("click", doSave);
+document.getElementById("bLoad").addEventListener("click", doLoad);
+document.getElementById("bClear").addEventListener("click", function () {
+  Store.remove(KEY);
+  setMessage("cleared", true);
+});
+document.getElementById("bBlock").addEventListener("click", function () {
+  pretendBlocked = !pretendBlocked;
+  Store.init();
+  setMessage(pretendBlocked ? "pretending storage is blocked" : "storage re-enabled", true);
+});
+document.getElementById("bString").addEventListener("click", doStringBug);
+
+document.addEventListener("keydown", function (e) {
+  if (e.key === "s" || e.key === "S") { doSave(); }
+  if (e.key === "l" || e.key === "L") { doLoad(); }
+  if (e.key === "x" || e.key === "X") { Store.remove(KEY); setMessage("cleared", true); }
+  if (e.key === "b" || e.key === "B") {
+    pretendBlocked = !pretendBlocked; Store.init();
+  }
+  if (e.key === "n" || e.key === "N") { doStringBug(); }
+  if (e.key === " ") { e.preventDefault(); counter += 10; }
+});
+
+/* load whatever was there when the page opened */
+doLoad();
+
+const view = document.getElementById("view");
+const ctx = view.getContext("2d");
+
+function draw() {
+  ctx.clearRect(0, 0, view.width, view.height);
+
+  ctx.font = "bold 15px system-ui, sans-serif";
+  ctx.fillStyle = Store.available ? "#51cf66" : "#ff6b6b";
+  ctx.fillText(Store.available ? "Store.available = true"
+                               : "Store.available = false — and the game is fine", 24, 32);
+  if (!Store.available && Store.lastError) {
+    ctx.font = "12px ui-monospace, Menlo, monospace";
+    ctx.fillStyle = "#8793a4";
+    ctx.fillText(Store.lastError.slice(0, 70), 24, 52);
+  }
+
+  ctx.font = "bold 44px ui-monospace, Menlo, monospace";
+  ctx.fillStyle = "#4dabf7";
+  ctx.fillText(String(counter), 24, 110);
+  ctx.font = "12px system-ui, sans-serif";
+  ctx.fillStyle = "#6b7480";
+  ctx.fillText("the counter (space or the +10 button)", 24, 130);
+
+  ctx.font = "13px system-ui, sans-serif";
+  ctx.fillStyle = messageGood ? "#51cf66" : "#f08c00";
+  ctx.fillText(message, 24, 162);
+
+  if (stringBugResult) {
+    ctx.font = "bold 12.5px system-ui, sans-serif";
+    ctx.fillStyle = "#ffd43b";
+    ctx.fillText("THE STRING SURPRISE", 24, 196);
+    ctx.font = "12px ui-monospace, Menlo, monospace";
+    ctx.fillStyle = "#a9b4c4";
+    ctx.fillText(stringBugResult.slice(0, 78), 24, 216);
+  }
+
+  /* what is really in the box */
+  ctx.font = "bold 12.5px system-ui, sans-serif";
+  ctx.fillStyle = "#e7ecf3";
+  ctx.fillText("WHAT IS IN STORAGE", 380, 196);
+  const rows = Store.dump();
+  ctx.font = "11.5px ui-monospace, Menlo, monospace";
+  if (rows.length === 0) {
+    ctx.fillStyle = "#6b7480";
+    ctx.fillText(Store.available ? "(empty)" : "(unavailable)", 380, 216);
+  }
+  for (let i = 0; i < Math.min(5, rows.length); i++) {
+    ctx.fillStyle = "#8793a4";
+    ctx.fillText(rows[i].key.slice(0, 20), 380, 216 + i * 17);
+    ctx.fillStyle = "#4a5362";
+    ctx.fillText(rows[i].value.slice(0, 22), 530, 216 + i * 17);
+  }
+
+  ctx.font = "12px system-ui, sans-serif";
+  ctx.fillStyle = "#4a5362";
+  ctx.fillText("Open this page in a private window: a real browser behaves like B.",
+               24, view.height - 36);
+  ctx.fillText("Note that file:// and http://localhost have SEPARATE storage.",
+               24, view.height - 18);
+
+  requestAnimationFrame(draw);
+}
+draw();
+</script>
+</body>
+</html>

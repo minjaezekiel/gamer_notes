@@ -1,0 +1,81 @@
+<!doctype html>
+<!-- ===========================================================================
+     03-the-whole-game/index.html — the whole level, assembled.
+
+     WHAT THIS DEMONSTRATES
+     Twelve small files, each of which is a lesson from this level:
+
+       config.js     the numbers, tuned in design units          (L3, L12)
+       vec2.js       two numbers that travel together            (L2)
+       input.js      keys in, intent out, with wasPressed         (L3, L7)
+       store.js      storage that cannot crash                   (L11)
+       level.js      the tilemap and the tile table              (L5)
+       player.js     the six-part jump and two-step collision     (L5, L12)
+       enemies.js    decide / act, with hysteresis                (L10)
+       particles.js  a pool, so nothing is ever allocated         (L9)
+       camera.js     dead zone, smoothing, clamp, shake           (L6, L9)
+       sound.js      oscillators and envelopes, no files          (L8)
+       render.js     the ONLY file that touches the canvas        (L1, L6)
+       game.js       the rules, and the ORDER things happen in    (L1, L12)
+       scenes.js     a scene stack: update the top, draw them all (L7)
+       main.js       the loop. Three lines of real work.          (L1)
+
+     Nothing here is new. The lesson is the SHAPE.
+
+     HOW TO RUN IT  ****  READ THIS  ****
+     These are ES modules, so double-clicking will not work - a browser will not
+     import across file://. Serve the folder:
+
+         cd 03-the-whole-game
+         python3 -m http.server 8000
+
+     then open http://localhost:8000.  (See lesson 1 for why.)
+
+     WHAT TO CHANGE FIRST
+     Open config.js and change JUMP_HEIGHT to TILE * 2. One number, and the whole
+     game is tuned differently - because nothing else in the program knows what
+     gravity is.
+     ======================================================================== -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Capstone platformer</title>
+<style>
+  body { background: #0b0e13; color: #e7ecf3; font-family: system-ui, sans-serif;
+         display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 18px; }
+  canvas { background: #0a0d12; border: 2px solid #2b3240; border-radius: 6px;
+           image-rendering: pixelated; }
+  p { max-width: 640px; font-size: 14px; line-height: 1.55; color: #a9b4c4; }
+  code { background: #1b2130; padding: 1px 5px; border-radius: 4px; }
+  #needs-server { max-width: 600px; background: #3b2a12; border: 2px solid #f08c00;
+                  border-radius: 8px; padding: 14px 18px; color: #ffd9a0; }
+  pre { background: #0a0d12; padding: 10px 12px; border-radius: 6px; overflow-x: auto; }
+  b { color: #ffd43b; }
+</style>
+</head>
+<body>
+<h1>Capstone platformer</h1>
+
+<div id="needs-server" hidden>
+  <h2 style="margin:0 0 6px;font-size:17px;color:#ffd43b">Opened from a file, so the modules could not load</h2>
+  <p>A browser treats every local file as its own website, so one local file may not
+  <code>import</code> another. Nothing is wrong with the game. Serve the folder:</p>
+  <pre>cd 03-the-whole-game
+python3 -m http.server 8000</pre>
+  <p>Then open <code>http://localhost:8000</code>. No internet is involved.</p>
+</div>
+
+<canvas id="game" width="720" height="440"></canvas>
+<p><b>&larr; &rarr;</b> run &middot; <b>Space</b> jump (hold for higher) &middot;
+   <b>&darr;</b> drop through a thin platform &middot; <b>P</b> pause &middot;
+   <b>Space</b> on the title screen to start. Collect the coins, avoid the guards,
+   reach the flag.</p>
+
+<script>
+  if (location.protocol === "file:") {
+    document.getElementById("needs-server").hidden = false;
+  }
+</script>
+<script type="module" src="main.js"></script>
+</body>
+</html>

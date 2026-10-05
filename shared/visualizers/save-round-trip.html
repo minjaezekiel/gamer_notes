@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>What Survives A Save</title>
+<meta name="description" content="Step an object through stringify, storage and parse, and watch exactly which parts of it do not come back.">
+<link rel="stylesheet" href="../css/notes.css">
+<link rel="stylesheet" href="../css/code.css">
+</head>
+<body>
+<div class="wrap">
+
+  <p class="breadcrumb"><a href="index.html">&larr; All visualizers</a></p>
+
+  <header class="lesson-head">
+    <p class="kicker">Concept 20 &middot; Works for JavaScript, Python and C++</p>
+    <h1>What Survives A Save</h1>
+    <p class="meta">The round trip, one stage at a time. Used in: web I-L11 &middot; python A-L3 &middot; c++ A-L8</p>
+  </header>
+
+  <p class="lede">Saving a game is a round trip: your living object becomes <strong>text</strong>, the text
+  is stored, and later the text becomes an object again. The trip is lossy, and the losses are silent.
+  Nothing throws, nothing warns &mdash; the value is just quietly different when it comes back.</p>
+
+  <div class="look-for">
+    <strong>What to look for</strong>
+    Press <span class="kbd">Step 1 frame</span> four times to walk one object through the four stages.
+    Then read the right-hand column: every row marked in red came back as something other than what went
+    in. Notice that <em>none of them produced an error</em>. The method was dropped, the
+    <code>undefined</code> disappeared, <code>Infinity</code> came back as <code>null</code>, and the date
+    is now a string that looks like a date and is not one.
+  </div>
+
+  <div id="saveDemo"></div>
+
+</div>
+
+<script src="../js/page.js"></script>
+<script src="../js/anim.js"></script>
+<script src="../js/codeblock.js"></script>
+<script>
+/* ---------------------------------------------------------------------------
+   The save round trip, stepped.
+
+   Students are told "use JSON" and it works, so they never find out what it
+   cannot carry - until a save file loads and the player's dash is missing, or a
+   score is null, and there is no error anywhere to start from.
+
+   The four stages are deliberately slow. The point is not the pipeline; it is the
+   last column.
+   ------------------------------------------------------------------------ */
+(function () {
+  var STAGE_NAMES = [
+    'the living object',
+    'JSON.stringify  ->  text',
+    'stored as text (localStorage)',
+    'JSON.parse  ->  a new object'
+  ];
+
+  /* Each row: what it is, what it looks like alive, what comes back, and whether
+     that is a loss. Written out rather than computed so the explanation can be
+     specific about each one. */
+  var ROWS = [
+    { key: 'score',    alive: '1200',               back: '1200',
+      note: 'a number survives', lost: false },
+    { key: 'name',     alive: '"Ada"',              back: '"Ada"',
+      note: 'a string survives', lost: false },
+    { key: 'unlocked', alive: '[1, 2, 5]',          back: '[1, 2, 5]',
+      note: 'arrays and plain objects survive', lost: false },
+    { key: 'alive',    alive: 'true',               back: 'true',
+      note: 'booleans survive', lost: false },
+    { key: 'dash',     alive: 'function () {...}',  back: '(gone)',
+      note: 'FUNCTIONS ARE DROPPED. The key vanishes entirely.', lost: true },
+    { key: 'combo',    alive: 'undefined',          back: '(gone)',
+      note: 'undefined is dropped too, so the key is missing on load', lost: true },
+    { key: 'best',     alive: 'Infinity',           back: 'null',
+      note: 'Infinity and NaN both become null', lost: true },
+    { key: 'lastPlay', alive: 'new Date()',         back: '"2026-01-01T..."',
+      note: 'a Date becomes a STRING that looks like a date', lost: true },
+    { key: 'seen',     alive: 'new Set([1,2])',     back: '{}',
+      note: 'Map and Set become empty objects - no warning at all', lost: true },
+    { key: 'parent',   alive: 'the object itself',  back: 'THROWS',
+      note: 'a circular reference is the only one that complains', lost: true }
+  ];
+
+  var awkwardToggle;
+
+  var GX = 24, GY = 74;
+  var COL_W = 196;
+
+  var sk = Anim.sketch({
+    mount: '#saveDemo',
+    width: 900, height: 470,
+    fps: 1,                       /* one logical frame = one stage */
+    controls: ['play', 'step', 'reset', 'speed'],
+
+    state: function () { return { stage: 0 }; },
+
+    update: function (s) {
+      s.stage = Math.min(4, s.stage + 1);
+    },
+
+    draw: function (s, g, api) {
+      var T = g.color;
+      var showAwkward = awkwardToggle && awkwardToggle.checked;
+      g.clear();
+
+      /* ---- the four stages, as a pipeline ---- */
+      g.text('THE ROUND TRIP', GX, 40, { size: 14, bold: true, color: T.muted });
+      for (var i = 0; i < 4; i++) {
+        var x = GX + i * (COL_W + 14);
+        var reached = s.stage > i;
+        var current = s.stage === i + 1;
+        g.rect(x, GY, COL_W, 54, current ? T.accent : (reached ? T.panel : T.bg));
+        g.strokeRect(x, GY, COL_W, 54, current ? T.accent : T.grid, current ? 2 : 1);
+        g.text(String(i + 1), x + 8, GY + 20,
+          { size: 12, bold: true, mono: true, color: current ? T.bg : T.muted });
+        var words = STAGE_NAMES[i].split('  ');
+        g.text(words[0], x + 24, GY + 20,
+          { size: 12.5, bold: true, color: current ? T.bg : (reached ? T.ink : T.muted) });
+        if (words.length > 1) {
+          g.text(words.slice(1).join(' '), x + 24, GY + 38,
+            { size: 11.5, mono: true, color: current ? T.bg : T.muted });
+        }
+        if (i < 3) {
+          g.arrow(x + COL_W + 1, GY + 27, x + COL_W + 12, GY + 27,
+                  reached ? T.good : T.grid, 2);
+        }
+      }
+
+      /* ---- the table ---- */
+      var TY = 158;
+      g.text('WHAT WENT IN', GX, TY - 10, { size: 13, bold: true, color: T.muted });
+      g.text('WHAT CAME BACK', GX + 420, TY - 10, { size: 13, bold: true, color: T.muted });
+
+      var rows = showAwkward ? ROWS : ROWS.slice(0, 4);
+      var shown = 0;
+      for (i = 0; i < rows.length; i++) {
+        var r = rows[i];
+        var y = TY + 18 + i * 28;
+        if (i % 2 === 0) { g.rect(GX - 4, y - 16, 856, 26, T.panel); }
+
+        g.text(r.key, GX, y, { size: 12.5, bold: true, mono: true, color: T.ink });
+        g.text(r.alive, GX + 104, y, { size: 12.5, mono: true, color: T.muted });
+
+        if (s.stage >= 4) {
+          var colour = r.lost ? T.bad : T.good;
+          g.text(r.back, GX + 420, y, { size: 12.5, bold: true, mono: true, color: colour });
+          g.text(r.note, GX + 560, y, { size: 11.5, color: r.lost ? T.bad : T.muted });
+          if (r.lost) { shown += 1; }
+        } else {
+          g.text('…', GX + 420, y, { size: 12.5, mono: true, color: T.grid });
+        }
+      }
+
+      /* ---- the caption ---- */
+      if (s.stage === 0) {
+        api.say('Press <strong>Step 1 frame</strong>. Each press advances one stage of the trip.');
+      } else if (s.stage === 1) {
+        api.say('<strong>Stage 1.</strong> A living object, with numbers, strings, arrays — and a ' +
+                'method, an <code>undefined</code>, an <code>Infinity</code>, a <code>Date</code> and ' +
+                'a <code>Set</code>. All perfectly ordinary things to have in a game object.');
+      } else if (s.stage === 2) {
+        api.say('<strong>Stage 2.</strong> <code>JSON.stringify</code> turns it into text. Text has no ' +
+                'idea what a function or a <code>Date</code> is, so decisions are being made right ' +
+                'here — silently.');
+      } else if (s.stage === 3) {
+        api.say('<strong>Stage 3.</strong> Stored. <code>localStorage</code> holds <em>strings only</em>, ' +
+                'which is why the stringify step is not optional. It is also why it can <strong>throw' +
+                '</strong> — in a private window, or with site data blocked, even reading it is an error.');
+      } else {
+        api.say('<strong>Stage 4.</strong> Parsed back. ' +
+                (showAwkward
+                  ? '<strong>' + shown + ' of the ten values are not what they were</strong>, and not ' +
+                    'one of them produced a warning. Only the circular reference complained — at save ' +
+                    'time, not load time.'
+                  : 'Everything survived. Now switch on the awkward values and run it again.'));
+      }
+
+      g.text(showAwkward
+        ? 'save ONLY plain numbers, strings, booleans, arrays and plain objects'
+        : 'these four kinds of value are the ones that are always safe',
+        GX, 452, { size: 13, bold: true, color: showAwkward ? T.bad : T.good });
+    },
+
+    onReset: function (s, api) {
+      api.say('Press <strong>Step 1 frame</strong> four times.');
+    }
+  });
+
+  awkwardToggle = sk.toggle('include the awkward values', true);
+}());
+</script>
+</body>
+</html>

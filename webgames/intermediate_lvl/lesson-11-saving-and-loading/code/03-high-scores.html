@@ -1,0 +1,295 @@
+<!doctype html>
+<!-- ===========================================================================
+     03-high-scores.html — a top-ten table that survives a hostile player.
+
+     WHAT THIS DEMONSTRATES
+       * sorting with a comparator (and what sort() does without one)
+       * keeping only the top ten
+       * VALIDATING every entry on load: a name must be a string of sensible
+         length, a score must be a finite number
+       * drawing names on a canvas, which is immune to the <script> problem that
+         innerHTML would have
+
+     The "corrupt the save" button damages storage five ways. All five must load.
+
+     HOW TO RUN IT
+     Double-click. Click "play a round" to add a random score, type a name first if
+     you like.
+       B  sort without a comparator (the string-sort bug)
+       1-5  corrupt the save in five different ways, then reload the table
+
+     WHAT TO CHANGE FIRST
+     Press 2 (wrong types), then "reload table". The bad rows are dropped and the
+     good ones survive. Then try typing a name of 400 characters.
+     ======================================================================== -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>High scores</title>
+<style>
+  body { background: #11151c; color: #e7ecf3; font-family: system-ui, sans-serif;
+         display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 16px; }
+  canvas { background: #0a0d12; border: 2px solid #2b3240; border-radius: 6px; }
+  #row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; justify-content: center; }
+  input { background: #0a0d12; color: #e7ecf3; border: 1px solid #2b3240;
+          border-radius: 6px; padding: 8px 10px; font-size: 14px; width: 150px; }
+  button { background: #1b2130; color: #e7ecf3; border: 1px solid #2b3240;
+           border-radius: 6px; padding: 8px 12px; font-size: 13.5px; cursor: pointer; }
+  button:hover { background: #253044; }
+  p { max-width: 650px; font-size: 14px; line-height: 1.5; color: #a9b4c4; }
+  b { color: #ffd43b; }
+</style>
+</head>
+<body>
+<h1>Top ten, defended</h1>
+<canvas id="view" width="680" height="400"></canvas>
+<div id="row">
+  <input id="name" placeholder="your name" maxlength="40">
+  <button id="play">play a round</button>
+  <button id="reload">reload table</button>
+  <button id="clear">clear</button>
+  <button id="corrupt1">1 truncate</button>
+  <button id="corrupt2">2 wrong types</button>
+  <button id="corrupt3">3 not JSON</button>
+  <button id="corrupt4">4 not an array</button>
+  <button id="corrupt5">5 huge name</button>
+</div>
+<p>After corrupting, press <b>reload table</b>. Nothing should crash, and only the
+   valid rows should come back. <b>B</b> toggles the broken sort.</p>
+
+<script>
+const Store = {
+  available: false,
+  init: function () {
+    try {
+      localStorage.setItem("__probe", "1");
+      localStorage.removeItem("__probe");
+      this.available = true;
+    } catch (err) { this.available = false; }
+  },
+  loadRaw: function (key) {
+    if (!this.available) { return null; }
+    try { return localStorage.getItem(key); } catch (err) { return null; }
+  },
+  saveRaw: function (key, text) {
+    if (!this.available) { return false; }
+    try { localStorage.setItem(key, text); return true; } catch (err) { return false; }
+  },
+  remove: function (key) {
+    if (!this.available) { return; }
+    try { localStorage.removeItem(key); } catch (err) { /* ignore */ }
+  }
+};
+Store.init();
+
+const KEY = "lesson11-scores";
+const MAX_ENTRIES = 10;
+const MAX_NAME = 14;
+
+let scores = [];
+let brokenSort = false;
+let report = "";
+let dropped = 0;
+
+/* ---------------------------------------------------------------------------
+   VALIDATION. Build a clean list from scratch, taking only what is usable.
+
+   Everything here is defending against three different authors: the player with
+   devtools open, a previous version of this program, and an interrupted write.
+   ------------------------------------------------------------------------ */
+function cleanName(value) {
+  if (typeof value !== "string") { return null; }
+  const trimmed = value.trim();
+  if (trimmed.length === 0) { return "Anonymous"; }
+  /* Cap the length at SAVE time, not at draw time, or the long string stays in
+     storage for ever and every future load has to deal with it. */
+  return trimmed.slice(0, MAX_NAME);
+}
+
+function cleanScore(value) {
+  if (typeof value !== "number" || !isFinite(value)) { return null; }
+  if (value < 0) { return null; }
+  return Math.floor(value);
+}
+
+function loadScores() {
+  dropped = 0;
+  const text = Store.loadRaw(KEY);
+  if (text === null) {
+    report = "no save yet — starting with an empty table";
+    return [];
+  }
+
+  let parsed;
+  try {
+    parsed = JSON.parse(text);
+  } catch (err) {
+    report = "the save was not JSON (" + err.name + ") — starting fresh";
+    return [];
+  }
+
+  if (!Array.isArray(parsed)) {
+    report = "the save was not an array — starting fresh";
+    return [];
+  }
+
+  const clean = [];
+  for (let i = 0; i < parsed.length; i++) {
+    const row = parsed[i];
+    if (row === null || typeof row !== "object") { dropped += 1; continue; }
+    const name = cleanName(row.name);
+    const score = cleanScore(row.score);
+    if (name === null || score === null) { dropped += 1; continue; }
+    clean.push({ name: name, score: score });
+  }
+
+  report = "loaded " + clean.length + " valid row(s)" +
+           (dropped > 0 ? ", dropped " + dropped + " bad one(s)" : "");
+  return sortAndTrim(clean);
+}
+
+function sortAndTrim(list) {
+  if (brokenSort) {
+    /* sort() with no comparator converts everything to STRINGS, so 1000 sorts
+       before 92 because "1" comes before "9". */
+    list.sort();
+  } else {
+    list.sort(function (a, b) { return b.score - a.score; });   // highest first
+  }
+  return list.slice(0, MAX_ENTRIES);
+}
+
+function saveScores() {
+  const ok = Store.saveRaw(KEY, JSON.stringify(scores));
+  if (!ok) { report = "could not save — the table still works for this session"; }
+}
+
+function addScore(name, score) {
+  scores.push({ name: cleanName(name) || "Anonymous", score: cleanScore(score) || 0 });
+  scores = sortAndTrim(scores);
+  saveScores();
+}
+
+scores = loadScores();
+
+document.getElementById("play").addEventListener("click", function () {
+  const name = document.getElementById("name").value;
+  addScore(name, Math.floor(Math.random() * 5000));
+});
+document.getElementById("reload").addEventListener("click", function () {
+  scores = loadScores();
+});
+document.getElementById("clear").addEventListener("click", function () {
+  Store.remove(KEY);
+  scores = [];
+  report = "cleared";
+});
+
+/* The five corruptions. Each one writes something a real player or a real bug
+   could plausibly leave behind. */
+document.getElementById("corrupt1").addEventListener("click", function () {
+  const text = Store.loadRaw(KEY) || "[]";
+  Store.saveRaw(KEY, text.slice(0, Math.floor(text.length / 2)));
+  report = "save truncated — press reload table";
+});
+document.getElementById("corrupt2").addEventListener("click", function () {
+  Store.saveRaw(KEY, JSON.stringify([
+    { name: "Ada", score: 3000 },
+    { name: 42, score: "banana" },
+    { name: "Kwame", score: Infinity },
+    null,
+    { score: 900 },
+    { name: "Yuki", score: 1500 }
+  ]));
+  report = "wrote a mix of valid and invalid rows — press reload table";
+});
+document.getElementById("corrupt3").addEventListener("click", function () {
+  Store.saveRaw(KEY, "this is definitely not json {{{");
+  report = "wrote nonsense — press reload table";
+});
+document.getElementById("corrupt4").addEventListener("click", function () {
+  Store.saveRaw(KEY, JSON.stringify({ oops: "an object, not an array" }));
+  report = "wrote an object instead of an array — press reload table";
+});
+document.getElementById("corrupt5").addEventListener("click", function () {
+  const long = "A".repeat(400);
+  Store.saveRaw(KEY, JSON.stringify([{ name: long, score: 4000 }]));
+  report = "wrote a 400-character name — press reload table";
+});
+
+document.addEventListener("keydown", function (e) {
+  if (e.target && e.target.tagName === "INPUT") { return; }
+  if (e.key === "b" || e.key === "B") {
+    brokenSort = !brokenSort;
+    scores = sortAndTrim(scores);
+  }
+});
+
+const view = document.getElementById("view");
+const ctx = view.getContext("2d");
+
+function draw() {
+  ctx.clearRect(0, 0, view.width, view.height);
+
+  ctx.font = "bold 18px system-ui, sans-serif";
+  ctx.fillStyle = "#e7ecf3";
+  ctx.fillText("HIGH SCORES", 28, 36);
+
+  ctx.font = "12px ui-monospace, Menlo, monospace";
+  ctx.fillStyle = brokenSort ? "#ff6b6b" : "#51cf66";
+  ctx.fillText(brokenSort ? "sort()  — alphabetical, so 1000 < 92   (press B)"
+                          : "sort((a,b) => b.score - a.score)   (press B)", 28, 56);
+
+  for (let i = 0; i < MAX_ENTRIES; i++) {
+    const y = 90 + i * 26;
+    ctx.fillStyle = i % 2 === 0 ? "#0e1319" : "#11161e";
+    ctx.fillRect(28, y - 17, 330, 24);
+    ctx.font = "13px ui-monospace, Menlo, monospace";
+    ctx.fillStyle = "#4a5362";
+    ctx.fillText(String(i + 1).padStart(2) + ".", 36, y);
+    if (i < scores.length) {
+      ctx.fillStyle = "#e7ecf3";
+      /* Drawn on a canvas, so a name containing HTML is just text. With
+         innerHTML this would be a way for a player to run code in the page. */
+      ctx.fillText(scores[i].name, 70, y);
+      ctx.fillStyle = "#ffd43b";
+      ctx.textAlign = "right";
+      ctx.fillText(String(scores[i].score), 348, y);
+      ctx.textAlign = "left";
+    }
+  }
+
+  const px = 390;
+  ctx.font = "bold 12.5px system-ui, sans-serif";
+  ctx.fillStyle = "#e7ecf3";
+  ctx.fillText("WHAT HAPPENED ON LOAD", px, 90);
+  ctx.font = "12px system-ui, sans-serif";
+  ctx.fillStyle = dropped > 0 ? "#f08c00" : "#8793a4";
+  const words = report.split(" ");
+  let line = "", ly = 112;
+  for (let i = 0; i < words.length; i++) {
+    if ((line + words[i]).length > 34) { ctx.fillText(line, px, ly); ly += 17; line = ""; }
+    line += words[i] + " ";
+  }
+  ctx.fillText(line, px, ly);
+
+  ctx.font = "12px ui-monospace, Menlo, monospace";
+  ctx.fillStyle = Store.available ? "#51cf66" : "#ff6b6b";
+  ctx.fillText("storage: " + (Store.available ? "available" : "unavailable"), px, 200);
+  ctx.fillStyle = "#8793a4";
+  ctx.fillText("entries: " + scores.length + " / " + MAX_ENTRIES, px, 218);
+  ctx.fillText("name cap: " + MAX_NAME + " chars", px, 236);
+
+  ctx.font = "11.5px system-ui, sans-serif";
+  ctx.fillStyle = "#4a5362";
+  ctx.fillText("A name is untrusted text. It is capped on the way IN,", px, 268);
+  ctx.fillText("and drawn on a canvas rather than through innerHTML.", px, 284);
+  ctx.fillText("Every row is checked: a name must be a string, a", px, 306);
+  ctx.fillText("score must be a finite number that is not negative.", px, 322);
+
+  requestAnimationFrame(draw);
+}
+draw();
+</script>
+</body>
+</html>

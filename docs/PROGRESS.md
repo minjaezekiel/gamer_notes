@@ -122,8 +122,68 @@ lesson must pass before it is ticked here.
 
 ## Phase 2 — intermediate levels (36 lessons)
 
-⬜ Not started. Specified in `CURRICULUM_MAP.md`, and each level now has a README listing its
-12 lessons so the structure is navigable. Needs `pygame-ce` and `raylib` install guides.
+🟡 **In progress. `webgames/intermediate_lvl` is complete: 12 lessons.**
+
+| | |
+|---|---|
+| Lessons authored | 12 of 12 (web) · 0 of 12 (python) · 0 of 12 (c++) |
+| Code examples | 48 pages plus a 15-module capstone game |
+| New shared visualizers | 10, bringing the gallery to 19 |
+| Handout PDFs | 12, committed |
+| Verification | every page loads clean in real Chrome; every visualizer is stepped 90 frames with its toggles flipped and its sliders pushed to both ends; the capstone is played headlessly for 400 frames |
+
+### `webgames/intermediate_lvl`
+
+| # | Lesson | notes | code | exercises | solutions | handout |
+|---|---|---|---|---|---|---|
+| 1 | One file becomes many | ✅ | ✅ 17 files | ✅ | ✅ | ✅ |
+| 2 | Vectors for real | ✅ | ✅ 5 | ✅ | ✅ | ✅ |
+| 3 | Acceleration, friction and drag | ✅ | ✅ 4 | ✅ | ✅ | ✅ |
+| 4 | Sprites and spritesheets | ✅ | ✅ 4 | ✅ | ✅ | ✅ |
+| 5 | Tilemaps | ✅ | ✅ 4 | ✅ | ✅ | ✅ |
+| 6 | The camera | ✅ | ✅ 4 | ✅ | ✅ | ✅ |
+| 7 | Scenes, properly | ✅ | ✅ 4 | ✅ | ✅ | ✅ |
+| 8 | Sound design with Web Audio | ✅ | ✅ 4 | ✅ | ✅ | ✅ |
+| 9 | Particles and juice engineering | ✅ | ✅ 4 | ✅ | ✅ | ✅ |
+| 10 | Enemies that seem to think | ✅ | ✅ 4 | ✅ | ✅ | ✅ |
+| 11 | Saving and loading | ✅ | ✅ 4 | ✅ | ✅ | ✅ |
+| 12 | **Capstone: a platformer** | ✅ | ✅ 3 + 16-file game | ✅ | ✅ | ✅ |
+
+### New shared visualizers
+
+| File | What it shows |
+|---|---|
+| `module-dependencies.html` | a load order resolved one file per Step press; one extra arrow makes it impossible |
+| `acceleration-and-friction.html` | overshoot, orbiting at zero friction, and the per-frame friction bug |
+| `sprite-animation.html` | the game clock and the animation clock, kept apart |
+| `tile-collision.html` | two corrections in two colours; one combined move climbs the wall |
+| `camera.html` | world space and screen space at the same moment, with the subtraction |
+| `easing.html` | five dots, same `t`, five journeys |
+| `audio-envelope.html` | the vertical edge in the waveform that *is* the click |
+| `enemy-ai.html` | hysteresis: set the give-up gap to zero and count the state changes |
+| `save-round-trip.html` | six of ten values come back different, and one complains |
+| (`gravity-and-velocity.html` re-used for the capstone's apex) | |
+
+### Tooling added in this phase
+
+| Item | Why |
+|---|---|
+| `?selftest=N` hook in `anim.js` | loading a page only proved the **first** frame drew. The checker now steps 90 frames, flips every toggle and pushes every slider to both ends. It found two real latent crashes in pages that had already passed. Verified by planting a frame-40 crash. |
+| local http server in `check_pages.js` | ES-module pages cannot be imported from `file://`, so they were unverifiable. Module pages are now served and loaded over `http://127.0.0.1`. |
+| module-aware inline-script parsing | `new Function()` refuses `import`; those blocks go through `node --check` instead. |
+| HTML comments stripped before the inline-script scan | several lessons discuss `<script>` tags inside a comment. |
+| `ERROR:CONSOLE` treated as a failure | so a page can report a failed self-check by throwing. |
+| `tools/.venv` (gitignored) with `pygame-ce` | for the Python intermediate checks. Excluded from every checker walk. |
+| `raylib` 6.0 installed via Homebrew | for the C++ intermediate checks. `/usr/local/include` is already on the default search path, so no `-I` is needed. |
+| `selftest.html` in the capstone | dispatches real keyboard events, plays 400 frames, and asserts the player's numbers stay finite and in bounds. Verified by planting a NaN. |
+
+### Bugs found by the new checks
+
+| Bug | Where | Fix |
+|---|---|---|
+| `Anim.clamp is not a function` — the helpers live on `Anim.util`, and the call sites were in `update()`, which a plain page load never runs | `camera.html`, `easing.html`, `enemy-ai.html` | corrected to `Anim.util.clamp`. These pages had already **passed** the old checker; the 90-frame self-test is what found them |
+| mismatched quote in a template string | `lesson-11/code/02-what-json-keeps.html` | caught by the inline-script parse |
+| an HTML comment closed with `*/`, which would have commented out the whole page | `lesson-12/.../selftest.html` | closed with `-->` |
 
 ## Phase 3 — advanced levels (36 lessons)
 

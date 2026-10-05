@@ -1,0 +1,363 @@
+<!doctype html>
+<!-- ===========================================================================
+     01-the-jump.html — the most important file in this level.
+
+     WHAT THIS DEMONSTRATES
+     Five refinements on top of "vy = -JUMP_SPEED", each on its own key, with every
+     timer drawn on screen:
+
+       1  variable height   release early and the rise is CUT, not stopped
+       2  coyote time       the ground remembers itself for 100 ms
+       3  jump buffering    the press remembers itself for 120 ms
+       4  apex hang         weaker gravity near the top
+       5  fast fall         stronger gravity coming down than going up
+
+     The jump is tuned from JUMP_HEIGHT and TIME_TO_APEX, not from raw numbers, so
+     the two constants at the top are the two things you actually care about.
+
+     HOW TO RUN IT
+     Double-click. Left/right to run, Space to jump.
+       1 2 3 4 5  switch each refinement
+       0  all off      9  all on
+       [ ]  coyote time shorter / longer
+
+     WHAT TO CHANGE FIRST
+     Press 0 and play for two minutes - especially the ledge jumps on the right.
+     Then press 9. Then set coyote time to 0.5 with ] and watch the player fly.
+     ======================================================================== -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>The jump</title>
+<style>
+  body { background: #11151c; color: #e7ecf3; font-family: system-ui, sans-serif;
+         display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 16px; }
+  canvas { background: #0a0d12; border: 2px solid #2b3240; border-radius: 6px; }
+  p { max-width: 660px; font-size: 14px; line-height: 1.5; color: #a9b4c4; }
+  b { color: #ffd43b; }
+</style>
+</head>
+<body>
+<h1>Six parts of a jump</h1>
+<canvas id="game" width="720" height="450"></canvas>
+<p>Arrows run &middot; <b>Space</b> jump &middot; <b>1</b>&ndash;<b>5</b> refinements &middot;
+   <b>0</b> all off &middot; <b>9</b> all on &middot; <b>[ ]</b> coyote time.
+   Try the ledge jumps on the right with coyote time off, then on.</p>
+
+<script>
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+
+const TILE = 32;
+
+/* ---------------------------------------------------------------------------
+   TUNED IN DESIGN UNITS. These two numbers are what you can picture; gravity and
+   jump speed are worked out from them. Change the height and nothing else needs
+   re-tuning.
+   ------------------------------------------------------------------------ */
+const JUMP_HEIGHT = TILE * 3.2;      // how high, in pixels
+const TIME_TO_APEX = 0.33;           // how long to the top, in seconds
+
+const GRAVITY_UP = (2 * JUMP_HEIGHT) / (TIME_TO_APEX * TIME_TO_APEX);
+const JUMP_SPEED = GRAVITY_UP * TIME_TO_APEX;
+const FALL_MULTIPLIER = 1.9;         // fast fall: gravity coming down
+const APEX_THRESHOLD = 110;          // |vy| below this counts as "near the top"
+const APEX_GRAVITY_SCALE = 0.55;
+const RELEASE_CUT = 0.45;
+const JUMP_BUFFER_TIME = 0.12;
+const RUN_SPEED = 240;
+const GROUND_DRAG = 11;
+const AIR_DRAG = 2.5;
+
+let coyoteTime = 0.10;
+
+const ON = { variable: true, coyote: true, buffer: true, apex: true, fastFall: true };
+const SWITCHES = ["variable", "coyote", "buffer", "apex", "fastFall"];
+const LABELS = ["1 variable height", "2 coyote time", "3 jump buffering",
+                "4 apex hang", "5 fast fall"];
+
+/* A level with a staircase, a long gap and two sheer ledges, so every refinement
+   has somewhere to matter. */
+const LEVEL = [
+  "......................",
+  "......................",
+  "...........#####......",
+  "......................",
+  "......###.............",
+  ".................##...",
+  "..###.................",
+  "..........####........",
+  "#####............#....",
+  "................##....",
+  "###############..#####",
+  "######################"
+];
+const COLS = LEVEL[0].length, ROWS = LEVEL.length;
+
+function isSolid(col, row) {
+  if (col < 0 || col >= COLS) { return true; }
+  if (row < 0) { return false; }
+  if (row >= ROWS) { return true; }
+  return LEVEL[row].charAt(col) === "#";
+}
+
+const player = {
+  x: TILE * 2, y: TILE * 7, w: 22, h: 30,
+  vx: 0, vy: 0,
+  onGround: false,
+  coyote: 0,
+  buffer: 0,
+  jumpsThisAir: 0,
+  lastJumpHeight: 0,
+  apexY: 0, startY: 0, rising: false
+};
+
+let jumpHeld = false;
+let jumpPressedThisFrame = false;
+const keys = {};
+
+document.addEventListener("keydown", function (e) {
+  if (e.key === " " && !keys[" "]) { jumpPressedThisFrame = true; }
+  keys[e.key] = true;
+  if (e.key.startsWith("Arrow") || e.key === " ") { e.preventDefault(); }
+  const n = Number(e.key);
+  if (n >= 1 && n <= 5) { ON[SWITCHES[n - 1]] = !ON[SWITCHES[n - 1]]; }
+  if (e.key === "0") { SWITCHES.forEach(function (k) { ON[k] = false; }); }
+  if (e.key === "9") { SWITCHES.forEach(function (k) { ON[k] = true; }); }
+  if (e.key === "]") { coyoteTime = Math.min(0.5, coyoteTime + 0.02); }
+  if (e.key === "[") { coyoteTime = Math.max(0, coyoteTime - 0.02); }
+  if (e.key === "r" || e.key === "R") { player.x = TILE * 2; player.y = TILE * 7; player.vy = 0; }
+});
+document.addEventListener("keyup", function (e) { keys[e.key] = false; });
+
+function solidOverlap(box) {
+  const c0 = Math.floor(box.x / TILE);
+  const c1 = Math.floor((box.x + box.w - 0.001) / TILE);
+  const r0 = Math.floor(box.y / TILE);
+  const r1 = Math.floor((box.y + box.h - 0.001) / TILE);
+  for (let row = r0; row <= r1; row++) {
+    for (let col = c0; col <= c1; col++) {
+      if (isSolid(col, row)) { return { col: col, row: row }; }
+    }
+  }
+  return null;
+}
+
+function update(dt) {
+  jumpHeld = !!keys[" "];
+
+  /* ---- horizontal: lesson 3 ---- */
+  let wantX = 0;
+  if (keys["ArrowLeft"])  { wantX -= 1; }
+  if (keys["ArrowRight"]) { wantX += 1; }
+  player.vx = player.vx + wantX * RUN_SPEED * 6 * dt;
+  const drag = player.onGround ? GROUND_DRAG : AIR_DRAG;
+  if (wantX === 0) { player.vx *= Math.exp(-drag * dt); }
+  if (Math.abs(player.vx) > RUN_SPEED) {
+    player.vx = Math.sign(player.vx) * RUN_SPEED;
+  }
+
+  /* ---- REFINEMENT 3: jump buffering.
+         The press remembers itself. Filled on a fresh PRESS, not while held - a
+         held key would refill it and the player would bounce on landing. ---- */
+  if (ON.buffer) {
+    if (jumpPressedThisFrame) { player.buffer = JUMP_BUFFER_TIME; }
+    else { player.buffer -= dt; }
+  } else {
+    player.buffer = jumpPressedThisFrame ? 0.0001 : 0;
+  }
+
+  /* ---- REFINEMENT 2: coyote time.
+         The ground remembers itself. ---- */
+  if (ON.coyote) {
+    if (player.onGround) { player.coyote = coyoteTime; }
+    else { player.coyote -= dt; }
+  } else {
+    player.coyote = player.onGround ? 0.0001 : 0;
+  }
+
+  /* ---- the jump itself: both windows open at once, in either order ---- */
+  if (player.buffer > 0 && player.coyote > 0) {
+    player.vy = -JUMP_SPEED;
+    player.buffer = 0;
+    player.coyote = 0;              /* BOTH, or it fires again next frame */
+    player.startY = player.y;
+    player.apexY = player.y;
+    player.rising = true;
+    player.jumpsThisAir += 1;
+  }
+
+  /* ---- REFINEMENT 1: variable height.
+         Cut the rise; do not stop it. ---- */
+  if (ON.variable && !jumpHeld && player.vy < 0) {
+    player.vy *= Math.pow(RELEASE_CUT, dt * 60);
+  }
+
+  /* ---- REFINEMENTS 4 and 5: which gravity ---- */
+  let gravity = GRAVITY_UP;
+  if (ON.fastFall && player.vy > 0) { gravity = GRAVITY_UP * FALL_MULTIPLIER; }
+  if (ON.apex && Math.abs(player.vy) < APEX_THRESHOLD) {
+    gravity *= APEX_GRAVITY_SCALE;
+  }
+  player.vy += gravity * dt;
+
+  /* ---- lesson 5's two-step collision ---- */
+  player.x += player.vx * dt;
+  const hitX = solidOverlap(player);
+  if (hitX) {
+    player.x = player.vx > 0 ? hitX.col * TILE - player.w : (hitX.col + 1) * TILE;
+    player.vx = 0;
+  }
+
+  player.onGround = false;
+  player.y += player.vy * dt;
+  const hitY = solidOverlap(player);
+  if (hitY) {
+    if (player.vy > 0) {
+      player.y = hitY.row * TILE - player.h;
+      player.onGround = true;
+      if (player.rising) {
+        player.lastJumpHeight = player.startY - player.apexY;
+        player.rising = false;
+      }
+      player.jumpsThisAir = 0;
+    } else {
+      player.y = (hitY.row + 1) * TILE;
+    }
+    player.vy = 0;
+  }
+
+  if (player.rising) { player.apexY = Math.min(player.apexY, player.y); }
+
+  if (player.y > ROWS * TILE + 100) {
+    player.x = TILE * 2; player.y = TILE * 7; player.vy = 0;
+  }
+
+  jumpPressedThisFrame = false;      /* consumed */
+}
+
+function bar(x, y, w, value, max, colour, label) {
+  ctx.fillStyle = "#1b2130";
+  ctx.fillRect(x, y, w, 10);
+  ctx.fillStyle = colour;
+  ctx.fillRect(x, y, w * Math.max(0, Math.min(1, value / max)), 10);
+  ctx.strokeStyle = "#2b3240";
+  ctx.lineWidth = 1;
+  ctx.strokeRect(x, y, w, 10);
+  ctx.font = "11px ui-monospace, Menlo, monospace";
+  ctx.fillStyle = value > 0 ? colour : "#4a5362";
+  ctx.fillText(label + "  " + Math.max(0, value).toFixed(3) + " s", x + w + 8, y + 9);
+}
+
+function draw() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = "#0f141b";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  for (let row = 0; row < ROWS; row++) {
+    for (let col = 0; col < COLS; col++) {
+      if (!isSolid(col, row)) { continue; }
+      ctx.fillStyle = "#3c4756";
+      ctx.fillRect(col * TILE, row * TILE, TILE, TILE);
+      ctx.fillStyle = "#4a5768";
+      ctx.fillRect(col * TILE, row * TILE, TILE, 4);
+    }
+  }
+
+  /* the height of the last jump, drawn where it happened */
+  if (player.lastJumpHeight > 4) {
+    ctx.strokeStyle = "#2b8a3e";
+    ctx.setLineDash([3, 4]);
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(player.x - 30, player.startY);
+    ctx.lineTo(player.x + 60, player.startY);
+    ctx.moveTo(player.x - 30, player.apexY);
+    ctx.lineTo(player.x + 60, player.apexY);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.font = "11px ui-monospace, Menlo, monospace";
+    ctx.fillStyle = "#51cf66";
+    ctx.fillText(Math.round(player.lastJumpHeight) + " px  (" +
+                 (player.lastJumpHeight / TILE).toFixed(1) + " tiles)",
+                 player.x + 64, player.apexY + 4);
+  }
+
+  ctx.fillStyle = player.onGround ? "#51cf66" : "#4dabf7";
+  ctx.fillRect(Math.round(player.x), Math.round(player.y), player.w, player.h);
+
+  /* ---- the panel ---- */
+  ctx.fillStyle = "rgba(10,13,18,0.93)";
+  ctx.fillRect(canvas.width - 290, 10, 280, 212);
+  ctx.strokeStyle = "#2b3240";
+  ctx.lineWidth = 1;
+  ctx.strokeRect(canvas.width - 290, 10, 280, 212);
+  const px = canvas.width - 278;
+
+  ctx.font = "12px ui-monospace, Menlo, monospace";
+  for (let i = 0; i < SWITCHES.length; i++) {
+    ctx.fillStyle = ON[SWITCHES[i]] ? "#51cf66" : "#6b7480";
+    ctx.fillText((ON[SWITCHES[i]] ? "[x] " : "[ ] ") + LABELS[i], px, 32 + i * 17);
+  }
+
+  bar(px, 128, 110, player.coyote, 0.5, "#ffd43b", "coyote");
+  bar(px, 148, 110, player.buffer, 0.5, "#4dabf7", "buffer");
+
+  ctx.font = "12px ui-monospace, Menlo, monospace";
+  ctx.fillStyle = player.onGround ? "#51cf66" : "#6b7480";
+  ctx.fillText("onGround   " + player.onGround, px, 180);
+  ctx.fillStyle = "#8793a4";
+  ctx.fillText("vy         " + Math.round(player.vy), px, 196);
+  ctx.fillStyle = player.jumpsThisAir > 1 ? "#ff6b6b" : "#8793a4";
+  ctx.fillText("jumps in air " + player.jumpsThisAir, px, 212);
+
+  /* ---- the design numbers ---- */
+  ctx.fillStyle = "rgba(10,13,18,0.9)";
+  ctx.fillRect(10, 10, 262, 104);
+  ctx.strokeStyle = "#2b3240";
+  ctx.strokeRect(10, 10, 262, 104);
+  ctx.font = "bold 12.5px system-ui, sans-serif";
+  ctx.fillStyle = "#e7ecf3";
+  ctx.fillText("TUNED IN DESIGN UNITS", 22, 30);
+  ctx.font = "12px ui-monospace, Menlo, monospace";
+  ctx.fillStyle = "#ffd43b";
+  ctx.fillText("JUMP_HEIGHT   " + Math.round(JUMP_HEIGHT) + " px", 22, 50);
+  ctx.fillText("TIME_TO_APEX  " + TIME_TO_APEX + " s", 22, 66);
+  ctx.fillStyle = "#6b7480";
+  ctx.fillText("-> gravity    " + Math.round(GRAVITY_UP), 22, 86);
+  ctx.fillText("-> jump speed " + Math.round(JUMP_SPEED), 22, 102);
+
+  ctx.font = "12px ui-monospace, Menlo, monospace";
+  ctx.fillStyle = coyoteTime > 0.2 ? "#ff6b6b" : "#8793a4";
+  ctx.fillText("coyote time " + coyoteTime.toFixed(2) + " s  ([ ])", 22, 140);
+  if (coyoteTime > 0.2) {
+    ctx.fillStyle = "#ff6b6b";
+    ctx.fillText("that is long enough to look like flying", 22, 158);
+  }
+
+  let allOff = true;
+  for (let i = 0; i < SWITCHES.length; i++) { if (ON[SWITCHES[i]]) { allOff = false; } }
+  if (allOff) {
+    ctx.font = "bold 13px system-ui, sans-serif";
+    ctx.fillStyle = "#f08c00";
+    ctx.fillText("all five off: this is the jump almost everybody writes first",
+                 22, canvas.height - 34);
+  }
+  ctx.font = "12px system-ui, sans-serif";
+  ctx.fillStyle = "#4a5362";
+  ctx.fillText("R resets the player", 22, canvas.height - 14);
+}
+
+let lastTime = 0;
+function frame(now) {
+  let dt = (now - lastTime) / 1000;
+  lastTime = now;
+  if (dt > 0.05) { dt = 0.05; }
+  update(dt);
+  draw();
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

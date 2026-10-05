@@ -1,0 +1,371 @@
+<!doctype html>
+<!-- ===========================================================================
+     04-save-and-migrate.html — last month's save still loads.
+
+     WHAT THIS DEMONSTRATES
+       * makeSave(): a DELIBERATE list of what is worth keeping, rather than saving
+         the whole game object
+       * a version number in every save, from the first day
+       * a migration chain that upgrades one step at a time
+       * refusing a save from the FUTURE, because it cannot be repaired
+       * saving on events and on visibilitychange, never every frame
+
+     The buttons write version 1 and version 2 saves by hand, so you can watch the
+     chain run on data this version of the game never produced.
+
+     HOW TO RUN IT
+     Double-click. Arrows move, collect the yellow dots to finish a level.
+       S  save now      L  load      X  clear
+       1  write a version 1 save   2  write a version 2 save
+       9  write a save from the FUTURE (version 99)
+
+     WHAT TO CHANGE FIRST
+     Press 1, then L. Watch the migration log: 1 -> 2 renames hp to health, 2 -> 3
+     adds the unlocked list. Then press 9 and L.
+     ======================================================================== -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Save and migrate</title>
+<style>
+  body { background: #11151c; color: #e7ecf3; font-family: system-ui, sans-serif;
+         display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 16px; }
+  canvas { background: #0a0d12; border: 2px solid #2b3240; border-radius: 6px; }
+  p { max-width: 650px; font-size: 14px; line-height: 1.5; color: #a9b4c4; }
+  b { color: #ffd43b; }
+</style>
+</head>
+<body>
+<h1>Last month's save</h1>
+<canvas id="game" width="700" height="450"></canvas>
+<p>Arrows move &middot; collect the dots &middot; <b>S</b> save &middot; <b>L</b> load &middot;
+   <b>X</b> clear &middot; <b>1</b> <b>2</b> write an old save &middot; <b>9</b> a future save.</p>
+
+<script>
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+
+const SAVE_VERSION = 3;
+const KEY = "lesson11-save";
+
+const Store = {
+  available: false,
+  init: function () {
+    try {
+      localStorage.setItem("__probe", "1");
+      localStorage.removeItem("__probe");
+      this.available = true;
+    } catch (err) { this.available = false; }
+  },
+  load: function (key, fallback) {
+    if (!this.available) { return fallback; }
+    try {
+      const text = localStorage.getItem(key);
+      if (text === null) { return fallback; }
+      return JSON.parse(text);
+    } catch (err) { return fallback; }
+  },
+  save: function (key, value) {
+    if (!this.available) { return false; }
+    try { localStorage.setItem(key, JSON.stringify(value)); return true; }
+    catch (err) { return false; }
+  },
+  remove: function (key) {
+    if (!this.available) { return; }
+    try { localStorage.removeItem(key); } catch (err) { /* ignore */ }
+  }
+};
+Store.init();
+
+/* =========================================================================
+   THE GAME. Note how much of this is NOT worth saving.
+   ====================================================================== */
+const game = {
+  level: 1,
+  score: 0,
+  health: 100,
+  unlocked: [1],
+  player: { x: 90, y: 360, vx: 0, vy: 0 },
+  dots: [],
+  particles: [],            // never saved: presentation
+  elapsed: 0                // never saved: derived from the session
+};
+
+function buildLevel() {
+  game.dots = [];
+  const count = 4 + game.level;
+  for (let i = 0; i < count; i++) {
+    game.dots.push({
+      x: 120 + (i % 6) * 88,
+      y: 120 + Math.floor(i / 6) * 90,
+      taken: false
+    });
+  }
+}
+buildLevel();
+
+/* ---------------------------------------------------------------------------
+   makeSave(): a deliberate list. This is also documentation of what the game's
+   state actually IS, which is a useful thing to have written down.
+
+   NOT here: the player's velocity (meaningless on load), the particles, the
+   elapsed time, the dots (derived from the level number).
+   ------------------------------------------------------------------------ */
+function makeSave() {
+  return {
+    version: SAVE_VERSION,
+    level: game.level,
+    score: game.score,
+    health: game.health,
+    unlocked: game.unlocked.slice(),     // a copy, so later changes do not leak
+    x: Math.round(game.player.x),
+    y: Math.round(game.player.y)
+  };
+}
+
+const migrationLog = [];
+
+/* ---------------------------------------------------------------------------
+   MIGRATION. One step at a time, in order. Each block only has to think about a
+   gap of one version, which is why adding version 4 later is one new block.
+   ------------------------------------------------------------------------ */
+function migrate(save) {
+  migrationLog.length = 0;
+
+  /* A save written before versions existed. Treat it as version 1 rather than
+     rejecting it - this is the case most people forget to add. */
+  if (typeof save.version !== "number") {
+    save.version = 1;
+    migrationLog.push("no version field -> treated as version 1");
+  }
+
+  if (save.version === 1) {
+    /* In version 1 the field was called hp. */
+    save.health = typeof save.hp === "number" ? save.hp : 100;
+    delete save.hp;
+    save.version = 2;
+    migrationLog.push("1 -> 2  renamed hp to health");
+  }
+
+  if (save.version === 2) {
+    /* Version 3 added the unlocked list, which version 2 saves do not have. */
+    save.unlocked = [1];
+    save.version = 3;
+    migrationLog.push("2 -> 3  added unlocked = [1]");
+  }
+
+  if (save.version !== SAVE_VERSION) {
+    /* A save from the FUTURE. There is nothing honest to do with it: this code
+       has never seen the format and cannot guess. Say so. */
+    migrationLog.push("version " + save.version + " is newer than this game (" +
+                      SAVE_VERSION + ") — refused");
+    return null;
+  }
+
+  migrationLog.push("now at version " + SAVE_VERSION);
+  return save;
+}
+
+/* Validation, after migration. Loaded data is untrusted input. */
+function applySave(raw) {
+  const migrated = migrate(raw);
+  if (migrated === null) { return false; }
+
+  game.level = clampInt(migrated.level, 1, 20, 1);
+  game.score = clampInt(migrated.score, 0, 9999999, 0);
+  game.health = clampInt(migrated.health, 0, 100, 100);
+  game.unlocked = Array.isArray(migrated.unlocked)
+    ? migrated.unlocked.filter(function (n) { return typeof n === "number"; })
+    : [1];
+  game.player.x = clampInt(migrated.x, 20, canvas.width - 20, 90);
+  game.player.y = clampInt(migrated.y, 20, canvas.height - 20, 360);
+  game.player.vx = 0;
+  game.player.vy = 0;
+  buildLevel();
+  return true;
+}
+
+function clampInt(value, lo, hi, fallback) {
+  if (typeof value !== "number" || !isFinite(value)) { return fallback; }
+  return Math.max(lo, Math.min(hi, Math.round(value)));
+}
+
+let message = "no save loaded yet";
+let lastSaveAt = 0;
+let saveTimer = 0;
+
+function doSave(reason) {
+  const ok = Store.save(KEY, makeSave());
+  lastSaveAt = Date.now();
+  message = ok ? "saved (" + reason + ")" : "could not save — carrying on anyway";
+}
+
+function doLoad() {
+  const raw = Store.load(KEY, null);
+  if (raw === null || typeof raw !== "object") {
+    migrationLog.length = 0;
+    migrationLog.push("nothing to load");
+    message = "no save found — using the defaults";
+    return;
+  }
+  message = applySave(raw) ? "loaded and migrated" : "save refused — started fresh";
+}
+
+function writeOldSave(version) {
+  if (version === 1) {
+    /* Exactly what version 1 of this game wrote: hp, no unlocked, no version. */
+    Store.save(KEY, { level: 2, score: 450, hp: 60, x: 300, y: 200 });
+    message = "wrote a version 1 save (hp, no version field). Press L.";
+  } else if (version === 2) {
+    Store.save(KEY, { version: 2, level: 3, score: 980, health: 35, x: 500, y: 150 });
+    message = "wrote a version 2 save (no unlocked list). Press L.";
+  } else {
+    Store.save(KEY, { version: 99, level: 7, score: 1, mystery: "???" });
+    message = "wrote a save from the future. Press L.";
+  }
+}
+
+const keys = {};
+document.addEventListener("keydown", function (e) {
+  keys[e.key] = true;
+  if (e.key.startsWith("Arrow")) { e.preventDefault(); }
+  if (e.key === "s" || e.key === "S") { doSave("you pressed S"); }
+  if (e.key === "l" || e.key === "L") { doLoad(); }
+  if (e.key === "x" || e.key === "X") { Store.remove(KEY); message = "save cleared"; }
+  if (e.key === "1") { writeOldSave(1); }
+  if (e.key === "2") { writeOldSave(2); }
+  if (e.key === "9") { writeOldSave(99); }
+});
+document.addEventListener("keyup", function (e) { keys[e.key] = false; });
+
+/* The tab being hidden is the most reliable "they are leaving" signal.
+   beforeunload is not dependable on mobile. */
+document.addEventListener("visibilitychange", function () {
+  if (document.visibilityState === "hidden") { doSave("the tab was hidden"); }
+});
+
+function update(dt) {
+  game.elapsed += dt;
+  const SPEED = 250;
+  if (keys["ArrowLeft"])  { game.player.x -= SPEED * dt; }
+  if (keys["ArrowRight"]) { game.player.x += SPEED * dt; }
+  if (keys["ArrowUp"])    { game.player.y -= SPEED * dt; }
+  if (keys["ArrowDown"])  { game.player.y += SPEED * dt; }
+  game.player.x = Math.max(16, Math.min(canvas.width - 16, game.player.x));
+  game.player.y = Math.max(16, Math.min(canvas.height - 16, game.player.y));
+
+  let left = 0;
+  for (let i = 0; i < game.dots.length; i++) {
+    const d = game.dots[i];
+    if (d.taken) { continue; }
+    if (Math.hypot(d.x - game.player.x, d.y - game.player.y) < 22) {
+      d.taken = true;
+      game.score += 10;
+    } else { left += 1; }
+  }
+
+  if (left === 0 && game.dots.length > 0) {
+    game.level += 1;
+    if (game.unlocked.indexOf(game.level) < 0) { game.unlocked.push(game.level); }
+    buildLevel();
+    doSave("finished a level");       /* saving on an EVENT, not every frame */
+  }
+
+  /* an autosave, debounced to once every ten seconds */
+  saveTimer += dt;
+  if (saveTimer > 10) { saveTimer = 0; doSave("the ten-second autosave"); }
+}
+
+function draw() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = "#0f141b";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  for (let i = 0; i < game.dots.length; i++) {
+    if (game.dots[i].taken) { continue; }
+    ctx.fillStyle = "#ffd43b";
+    ctx.beginPath();
+    ctx.arc(game.dots[i].x, game.dots[i].y, 8, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.fillStyle = "#4dabf7";
+  ctx.beginPath();
+  ctx.arc(game.player.x, game.player.y, 14, 0, Math.PI * 2);
+  ctx.fill();
+
+  /* ---- the panel ---- */
+  ctx.fillStyle = "rgba(10,13,18,0.93)";
+  ctx.fillRect(10, 10, 300, 176);
+  ctx.strokeStyle = "#2b3240";
+  ctx.lineWidth = 1;
+  ctx.strokeRect(10, 10, 300, 176);
+
+  ctx.font = "bold 13px system-ui, sans-serif";
+  ctx.fillStyle = "#e7ecf3";
+  ctx.fillText("THE SAVE (version " + SAVE_VERSION + ")", 22, 32);
+
+  ctx.font = "12px ui-monospace, Menlo, monospace";
+  const save = makeSave();
+  const keysOf = Object.keys(save);
+  for (let i = 0; i < keysOf.length; i++) {
+    ctx.fillStyle = "#8793a4";
+    ctx.fillText(keysOf[i], 22, 54 + i * 17);
+    ctx.fillStyle = "#ffd43b";
+    ctx.fillText(JSON.stringify(save[keysOf[i]]), 130, 54 + i * 17);
+  }
+  ctx.fillStyle = "#4a5362";
+  ctx.fillText("not saved: vx, vy, dots,", 22, 54 + keysOf.length * 17 + 6);
+  ctx.fillText("particles, elapsed", 22, 54 + keysOf.length * 17 + 22);
+
+  const px = 330;
+  ctx.font = "bold 13px system-ui, sans-serif";
+  ctx.fillStyle = "#e7ecf3";
+  ctx.fillText("MIGRATION LOG", px, 32);
+  ctx.font = "12px ui-monospace, Menlo, monospace";
+  if (migrationLog.length === 0) {
+    ctx.fillStyle = "#4a5362";
+    ctx.fillText("(press 1, 2 or 9 then L)", px, 54);
+  }
+  for (let i = 0; i < migrationLog.length; i++) {
+    const refused = migrationLog[i].indexOf("refused") >= 0;
+    ctx.fillStyle = refused ? "#ff6b6b" : "#51cf66";
+    ctx.fillText(migrationLog[i].slice(0, 42), px, 54 + i * 17);
+  }
+
+  ctx.font = "13px system-ui, sans-serif";
+  ctx.fillStyle = "#a9b4c4";
+  ctx.fillText(message, px, 150);
+
+  ctx.font = "12px ui-monospace, Menlo, monospace";
+  ctx.fillStyle = Store.available ? "#51cf66" : "#ff6b6b";
+  ctx.fillText("storage " + (Store.available ? "available" : "unavailable"), px, 176);
+  ctx.fillStyle = "#6b7480";
+  ctx.fillText(lastSaveAt
+    ? "last save " + Math.round((Date.now() - lastSaveAt) / 1000) + " s ago"
+    : "never saved this session", px, 194);
+
+  ctx.font = "bold 16px system-ui, sans-serif";
+  ctx.fillStyle = "#e7ecf3";
+  ctx.fillText("LEVEL " + game.level + "    SCORE " + game.score,
+               canvas.width - 250, canvas.height - 20);
+
+  ctx.font = "12px system-ui, sans-serif";
+  ctx.fillStyle = "#4a5362";
+  ctx.fillText("saves happen on events and on a ten-second timer — never every frame",
+               22, canvas.height - 20);
+}
+
+let lastTime = 0;
+function frame(now) {
+  let dt = (now - lastTime) / 1000;
+  lastTime = now;
+  if (dt > 0.05) { dt = 0.05; }
+  update(dt);
+  draw();
+  requestAnimationFrame(frame);
+}
+doLoad();
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
