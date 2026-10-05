@@ -1,0 +1,291 @@
+<!doctype html>
+<!-- ===========================================================================
+     02-one-scene-at-a-time.html — scenes as objects, and a two-line loop.
+
+     WHAT THIS DEMONSTRATES
+       * a scene owns its own data and has enter / update / draw / exit
+       * ALL setup lives in enter(), so playing twice gives two identical games
+       * the game loop becomes two lines and never changes again
+       * wasPressed(), so a held key counts once
+
+     There is a switch (E) that empties the play scene's enter() so you can see
+     what the second game looks like without it.
+
+     HOW TO RUN IT
+     Double-click. Space to start, arrow keys to move, collect the dots, avoid the
+     red one. E breaks enter() on purpose.
+
+     WHAT TO CHANGE FIRST
+     Press E, then play, die, and play again. The second game starts with the score
+     you ended on and the dots already collected.
+     ======================================================================== -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>One scene at a time</title>
+<style>
+  body { background: #11151c; color: #e7ecf3; font-family: system-ui, sans-serif;
+         display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 16px; }
+  canvas { background: #0a0d12; border: 2px solid #2b3240; border-radius: 6px; }
+  p { max-width: 640px; font-size: 14.5px; line-height: 1.5; color: #a9b4c4; }
+  b { color: #ffd43b; }
+</style>
+</head>
+<body>
+<h1>Scenes</h1>
+<canvas id="game" width="640" height="420"></canvas>
+<p><b>Space</b> starts and restarts &middot; arrow keys move &middot;
+   <b>E</b> empties <code>enter()</code> on purpose.</p>
+
+<script>
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+
+/* ---------------------------------------------------------------------------
+   INPUT, with just-pressed. The copy at the end of the frame is the whole trick.
+   ------------------------------------------------------------------------ */
+const Input = {
+  keys: {},
+  previous: {},
+
+  start: function () {
+    document.addEventListener("keydown", function (e) {
+      Input.keys[e.key] = true;
+      if (e.key.startsWith("Arrow") || e.key === " ") { e.preventDefault(); }
+    });
+    document.addEventListener("keyup", function (e) { Input.keys[e.key] = false; });
+  },
+
+  isDown: function (k) { return !!this.keys[k]; },
+
+  /* true ONLY on the first frame the key is held */
+  wasPressed: function (k) { return !!this.keys[k] && !this.previous[k]; },
+
+  endFrame: function () { this.previous = Object.assign({}, this.keys); }
+};
+
+/* ---------------------------------------------------------------------------
+   THE SCENE MANAGER. One scene at a time, for now - the stack comes next.
+   ------------------------------------------------------------------------ */
+const Scenes = {
+  current: null,
+  go: function (scene) {
+    if (this.current && this.current.exit) { this.current.exit(); }
+    this.current = scene;
+    if (scene.enter) { scene.enter(); }
+  }
+};
+
+/* Data that outlives any single scene. It cannot live inside a scene, because
+   every scene that holds it will eventually be exited. */
+const Session = { lastScore: 0, bestScore: 0, games: 0 };
+
+let breakEnter = false;
+
+/* ---------------------------------------------------------------------------
+   TITLE
+   ------------------------------------------------------------------------ */
+const titleScene = {
+  name: "title",
+  enter: function () { this.blink = 0; },
+  update: function (dt) {
+    this.blink += dt;
+    if (Input.wasPressed(" ")) { Scenes.go(playScene); }
+  },
+  draw: function (ctx) {
+    ctx.fillStyle = "#101722";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.textAlign = "center";
+    ctx.font = "bold 40px system-ui, sans-serif";
+    ctx.fillStyle = "#e7ecf3";
+    ctx.fillText("DOT COLLECTOR", canvas.width / 2, 150);
+    if (this.blink % 1 < 0.6) {
+      ctx.font = "17px system-ui, sans-serif";
+      ctx.fillStyle = "#4dabf7";
+      ctx.fillText("press SPACE", canvas.width / 2, 210);
+    }
+    if (Session.games > 0) {
+      ctx.font = "14px system-ui, sans-serif";
+      ctx.fillStyle = "#8793a4";
+      ctx.fillText("last " + Session.lastScore + "   best " + Session.bestScore +
+                   "   games " + Session.games, canvas.width / 2, 270);
+    }
+    ctx.textAlign = "left";
+  },
+  exit: function () {}
+};
+
+/* ---------------------------------------------------------------------------
+   PLAY — every single piece of its state is built in enter()
+   ------------------------------------------------------------------------ */
+const playScene = {
+  name: "play",
+
+  enter: function () {
+    if (breakEnter) { return; }          /* the switch, for the demonstration */
+    this.player = { x: 320, y: 210, r: 12, speed: 290 };
+    this.dots = [];
+    for (let i = 0; i < 9; i++) {
+      this.dots.push({ x: 60 + (i % 3) * 230, y: 70 + Math.floor(i / 3) * 130, taken: false });
+    }
+    this.chaser = { x: 60, y: 60, speed: 120 };
+    this.score = 0;
+    this.time = 0;
+  },
+
+  update: function (dt) {
+    /* If enter() did not run, these do not exist. Guarding here so the broken
+       demonstration shows the real symptom instead of a stack trace. */
+    if (!this.player) { this.enterFallback(); }
+    this.time += dt;
+
+    if (Input.isDown("ArrowLeft"))  { this.player.x -= this.player.speed * dt; }
+    if (Input.isDown("ArrowRight")) { this.player.x += this.player.speed * dt; }
+    if (Input.isDown("ArrowUp"))    { this.player.y -= this.player.speed * dt; }
+    if (Input.isDown("ArrowDown"))  { this.player.y += this.player.speed * dt; }
+    this.player.x = Math.max(14, Math.min(canvas.width - 14, this.player.x));
+    this.player.y = Math.max(14, Math.min(canvas.height - 14, this.player.y));
+
+    for (let i = 0; i < this.dots.length; i++) {
+      const d = this.dots[i];
+      if (d.taken) { continue; }
+      if (Math.hypot(d.x - this.player.x, d.y - this.player.y) < 20) {
+        d.taken = true;
+        this.score += 10;
+      }
+    }
+
+    const dx = this.player.x - this.chaser.x, dy = this.player.y - this.chaser.y;
+    const len = Math.hypot(dx, dy);
+    if (len > 1) {
+      this.chaser.x += (dx / len) * this.chaser.speed * dt;
+      this.chaser.y += (dy / len) * this.chaser.speed * dt;
+    }
+
+    let anyLeft = false;
+    for (let i = 0; i < this.dots.length; i++) { if (!this.dots[i].taken) { anyLeft = true; } }
+
+    if (len < 22 || !anyLeft) {
+      Session.lastScore = this.score;
+      Session.bestScore = Math.max(Session.bestScore, this.score);
+      Session.games += 1;
+      gameOverScene.won = !anyLeft;
+      Scenes.go(gameOverScene);
+      return;                            /* RETURN. The rest of update must not run. */
+    }
+  },
+
+  /* only used when enter() has been deliberately emptied */
+  enterFallback: function () {
+    const was = breakEnter;
+    breakEnter = false;
+    this.enter();
+    breakEnter = was;
+  },
+
+  draw: function (ctx) {
+    ctx.fillStyle = "#0f141b";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    if (!this.dots) { return; }
+
+    for (let i = 0; i < this.dots.length; i++) {
+      if (this.dots[i].taken) { continue; }
+      ctx.fillStyle = "#ffd43b";
+      ctx.beginPath();
+      ctx.arc(this.dots[i].x, this.dots[i].y, 7, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.fillStyle = "#ff6b6b";
+    ctx.beginPath();
+    ctx.arc(this.chaser.x, this.chaser.y, 11, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#4dabf7";
+    ctx.beginPath();
+    ctx.arc(this.player.x, this.player.y, this.player.r, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.font = "bold 16px system-ui, sans-serif";
+    ctx.fillStyle = "#e7ecf3";
+    ctx.fillText("SCORE " + this.score, 14, 28);
+    ctx.font = "12px ui-monospace, Menlo, monospace";
+    ctx.fillStyle = "#6b7480";
+    ctx.fillText("time " + this.time.toFixed(1), 14, 46);
+  },
+
+  exit: function () {}
+};
+
+/* ---------------------------------------------------------------------------
+   GAME OVER — ignores input for half a second, on purpose
+   ------------------------------------------------------------------------ */
+const gameOverScene = {
+  name: "gameover",
+  won: false,
+  enter: function () { this.t = 0; },
+  update: function (dt) {
+    this.t += dt;
+    /* The player got here by pressing keys, probably several. Accepting input
+       immediately would dismiss this screen before they had read it. */
+    if (this.t > 0.5 && Input.wasPressed(" ")) { Scenes.go(titleScene); }
+  },
+  draw: function (ctx) {
+    ctx.fillStyle = "#140f14";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.textAlign = "center";
+    ctx.font = "bold 36px system-ui, sans-serif";
+    ctx.fillStyle = this.won ? "#51cf66" : "#ff6b6b";
+    ctx.fillText(this.won ? "ALL COLLECTED" : "CAUGHT", canvas.width / 2, 160);
+    ctx.font = "18px system-ui, sans-serif";
+    ctx.fillStyle = "#e7ecf3";
+    ctx.fillText("score " + Session.lastScore, canvas.width / 2, 205);
+    if (this.t > 0.5) {
+      ctx.font = "15px system-ui, sans-serif";
+      ctx.fillStyle = "#8793a4";
+      ctx.fillText("press SPACE", canvas.width / 2, 260);
+    } else {
+      ctx.font = "13px system-ui, sans-serif";
+      ctx.fillStyle = "#4a5362";
+      ctx.fillText("(input locked for half a second — on purpose)", canvas.width / 2, 260);
+    }
+    ctx.textAlign = "left";
+  },
+  exit: function () {}
+};
+
+document.addEventListener("keydown", function (e) {
+  if (e.key === "e" || e.key === "E") { breakEnter = !breakEnter; }
+});
+
+function drawOverlay() {
+  ctx.font = "12px ui-monospace, Menlo, monospace";
+  ctx.fillStyle = "#6b7480";
+  ctx.fillText("scene: " + Scenes.current.name, canvas.width - 150, canvas.height - 14);
+  if (breakEnter) {
+    ctx.fillStyle = "#ff6b6b";
+    ctx.fillText("enter() is EMPTY (press E)", 14, canvas.height - 14);
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   THE LOOP. Two lines of game, and it never changes again.
+   ------------------------------------------------------------------------ */
+Input.start();
+Scenes.go(titleScene);
+
+let lastTime = 0;
+function frame(now) {
+  let dt = (now - lastTime) / 1000;
+  lastTime = now;
+  if (dt > 0.05) { dt = 0.05; }
+
+  Scenes.current.update(dt);
+  Scenes.current.draw(ctx);
+
+  drawOverlay();
+  Input.endFrame();              /* AFTER update: wasPressed needs last frame */
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

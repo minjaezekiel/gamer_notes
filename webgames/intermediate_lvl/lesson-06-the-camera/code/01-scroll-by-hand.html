@@ -1,0 +1,173 @@
+<!doctype html>
+<!-- ===========================================================================
+     01-scroll-by-hand.html — a world four screens wide, and the simplest
+     possible camera.
+
+     WHAT THIS DEMONSTRATES
+     That the camera is one subtraction, and that "camera = player" is not good
+     enough. Walk in small steps and watch the entire world jerk around. Several
+     people find this physically unpleasant, which is the honest reason the rest of
+     the lesson exists.
+
+     The readout shows the player's position in BOTH coordinate systems at once.
+     They are different numbers and both are correct.
+
+     HOW TO RUN IT
+     Double-click. Arrow keys. M shows a marker at world (0, 0).
+
+     WHAT TO CHANGE FIRST
+     Change the minus to a plus in the three draw calls. The world now scrolls the
+     wrong way. Ask yourself what should happen to a thing at world x = 0 when the
+     camera moves right.
+     ======================================================================== -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Scroll by hand</title>
+<style>
+  body { background: #11151c; color: #e7ecf3; font-family: system-ui, sans-serif;
+         display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 16px; }
+  canvas { background: #0a0d12; border: 2px solid #2b3240; border-radius: 6px; }
+  p { max-width: 640px; font-size: 15px; line-height: 1.5; color: #a9b4c4; }
+  b { color: #ffd43b; }
+</style>
+</head>
+<body>
+<h1>One subtraction</h1>
+<canvas id="game" width="640" height="420"></canvas>
+<p>Arrow keys &middot; <b>M</b> marks world (0, 0). Take small steps and watch the
+   whole world move. The strip at the bottom is the level; the box on it is what you
+   can see.</p>
+
+<script>
+const TILE = 32;
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+
+const VIEW_H = 330;                 // the game area; the strip below is a map
+const WORLD_W = canvas.width * 4;   // four screens wide
+const GROUND_Y = 280;
+
+/* Some scenery, in WORLD coordinates. Nothing here knows about a camera. */
+const blocks = [];
+for (let i = 0; i < 70; i++) {
+  blocks.push({
+    x: 90 + i * 34 + (i % 7) * 9,
+    y: GROUND_Y - 20 - ((i * 37) % 5) * 22,
+    w: 30, h: 20,
+    shade: 40 + (i % 4) * 14
+  });
+}
+
+const player = { x: 200, y: GROUND_Y - 30, w: 22, h: 30, speed: 260 };
+const camera = { x: 0, y: 0 };
+let showMarker = false;
+
+const keys = {};
+document.addEventListener("keydown", function (e) {
+  keys[e.key] = true;
+  if (e.key.startsWith("Arrow")) { e.preventDefault(); }
+  if (e.key === "m" || e.key === "M") { showMarker = !showMarker; }
+});
+document.addEventListener("keyup", function (e) { keys[e.key] = false; });
+
+function update(dt) {
+  /* The player moves in WORLD space. Nothing about movement mentions the camera. */
+  if (keys["ArrowRight"]) { player.x += player.speed * dt; }
+  if (keys["ArrowLeft"])  { player.x -= player.speed * dt; }
+  player.x = Math.max(0, Math.min(WORLD_W - player.w, player.x));
+
+  /* THE SIMPLEST CAMERA: put the player in the middle, always. It does exactly
+     what it says, and it is the thing the rest of the lesson improves on. */
+  camera.x = player.x + player.w / 2 - canvas.width / 2;
+}
+
+function draw() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  /* ---- the sky ---- */
+  ctx.fillStyle = "#101722";
+  ctx.fillRect(0, 0, canvas.width, VIEW_H);
+
+  /* ---- the ground: one long rectangle in world space ---- */
+  ctx.fillStyle = "#1a2230";
+  ctx.fillRect(0 - camera.x, GROUND_Y, WORLD_W, VIEW_H - GROUND_Y);
+
+  /* ---- the scenery. THE SUBTRACTION, once per thing. ---- */
+  for (let i = 0; i < blocks.length; i++) {
+    const b = blocks[i];
+    const screenX = b.x - camera.x;
+    // Skip what cannot be seen: the culling idea from lesson 5.
+    if (screenX < -b.w || screenX > canvas.width) { continue; }
+    ctx.fillStyle = "rgb(" + (b.shade + 20) + "," + (b.shade + 30) + "," + (b.shade + 46) + ")";
+    ctx.fillRect(screenX, b.y, b.w, b.h);
+  }
+
+  /* ---- the player ---- */
+  const playerScreenX = player.x - camera.x;
+  ctx.fillStyle = "#4dabf7";
+  ctx.fillRect(playerScreenX, player.y, player.w, player.h);
+
+  /* ---- a marker at world (0, 0): it should sit at screen (-camera.x, -camera.y) ---- */
+  if (showMarker) {
+    ctx.strokeStyle = "#ff6b6b";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(0 - camera.x, 0);
+    ctx.lineTo(0 - camera.x, VIEW_H);
+    ctx.stroke();
+    ctx.fillStyle = "#ff6b6b";
+    ctx.font = "12px ui-monospace, Menlo, monospace";
+    ctx.fillText("world x = 0", 4 - camera.x, 16);
+  }
+
+  /* ---- the level strip, so the whole world is visible at once ---- */
+  const STRIP_Y = VIEW_H + 20, STRIP_H = 40;
+  const scale = canvas.width / WORLD_W;
+  ctx.fillStyle = "#161c25";
+  ctx.fillRect(0, STRIP_Y, canvas.width, STRIP_H);
+  for (let i = 0; i < blocks.length; i++) {
+    ctx.fillStyle = "#2b3443";
+    ctx.fillRect(blocks[i].x * scale, STRIP_Y + 8, Math.max(1, blocks[i].w * scale), 10);
+  }
+  ctx.fillStyle = "#4dabf7";
+  ctx.fillRect(player.x * scale - 1, STRIP_Y + 4, 3, 18);
+  ctx.strokeStyle = "#f08c00";
+  ctx.lineWidth = 2;
+  ctx.strokeRect(camera.x * scale, STRIP_Y + 2, canvas.width * scale, STRIP_H - 4);
+  ctx.fillStyle = "#6b7480";
+  ctx.font = "11px system-ui, sans-serif";
+  ctx.fillText("the whole world (" + WORLD_W + " px). The orange box is what you can see.",
+               4, STRIP_Y + STRIP_H + 14);
+
+  /* ---- THE READOUT: the same player, two numbers ---- */
+  ctx.fillStyle = "rgba(10,13,18,0.88)";
+  ctx.fillRect(10, 10, 262, 92);
+  ctx.strokeStyle = "#2b3240";
+  ctx.lineWidth = 1;
+  ctx.strokeRect(10, 10, 262, 92);
+
+  ctx.font = "12.5px ui-monospace, Menlo, monospace";
+  ctx.fillStyle = "#4dabf7";
+  ctx.fillText("player world x   " + Math.round(player.x), 22, 32);
+  ctx.fillStyle = "#51cf66";
+  ctx.fillText("player screen x  " + Math.round(playerScreenX), 22, 52);
+  ctx.fillStyle = "#f08c00";
+  ctx.fillText("camera x         " + Math.round(camera.x), 22, 72);
+  ctx.fillStyle = "#8793a4";
+  ctx.fillText("screen = world - camera", 22, 94);
+}
+
+let lastTime = 0;
+function frame(now) {
+  let dt = (now - lastTime) / 1000;
+  lastTime = now;
+  if (dt > 0.05) { dt = 0.05; }
+  update(dt);
+  draw();
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

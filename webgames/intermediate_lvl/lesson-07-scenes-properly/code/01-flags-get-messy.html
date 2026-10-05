@@ -1,0 +1,210 @@
+<!doctype html>
+<!-- ===========================================================================
+     01-flags-get-messy.html — sixteen states, four of which anybody meant.
+
+     WHAT THIS DEMONSTRATES
+     Four booleans give 2^4 = 16 combinations. The table below marks which ones
+     the author actually thought about. Click the flags and put the game into an
+     illegal state on purpose - including all four false, where the game draws
+     nothing, responds to nothing, and reports no error at all.
+
+     Nothing here is broken. Every line does exactly what it says. That is the
+     uncomfortable part.
+
+     HOW TO RUN IT
+     Double-click. Click the four flag boxes, or press 1, 2, 3, 4.
+
+     WHAT TO CHANGE FIRST
+     Turn every flag off. Then imagine finding that in a 600-line game, where the
+     flag that did not get set is in a branch you cannot see.
+     ======================================================================== -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Flags get messy</title>
+<style>
+  body { background: #11151c; color: #e7ecf3; font-family: system-ui, sans-serif;
+         display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 16px; }
+  canvas { background: #0a0d12; border: 2px solid #2b3240; border-radius: 6px; cursor: pointer; }
+  p { max-width: 650px; font-size: 14.5px; line-height: 1.5; color: #a9b4c4; }
+  b { color: #ffd43b; }
+</style>
+</head>
+<body>
+<h1>Sixteen states</h1>
+<canvas id="game" width="700" height="470"></canvas>
+<p>Click the flags on the left, or press <b>1</b>&ndash;<b>4</b>. The table shows
+   every combination the four booleans allow, and which ones mean anything.</p>
+
+<script>
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+
+/* The four flags. This is how it always starts, and it is not unreasonable. */
+let inMenu = true;
+let isPlaying = false;
+let isPaused = false;
+let isGameOver = false;
+
+const FLAGS = [
+  { name: "inMenu",     get: function () { return inMenu; },     set: function (v) { inMenu = v; } },
+  { name: "isPlaying",  get: function () { return isPlaying; },  set: function (v) { isPlaying = v; } },
+  { name: "isPaused",   get: function () { return isPaused; },   set: function (v) { isPaused = v; } },
+  { name: "isGameOver", get: function () { return isGameOver; }, set: function (v) { isGameOver = v; } }
+];
+
+/* Which of the sixteen did anybody mean? Written out so the count is honest. */
+function isLegal(menu, playing, paused, over) {
+  if (menu && !playing && !paused && !over) { return true; }   // on the title screen
+  if (!menu && playing && !paused && !over) { return true; }   // playing
+  if (!menu && playing && paused && !over)  { return true; }   // paused mid-game
+  if (!menu && !playing && !paused && over) { return true; }   // game over screen
+  return false;
+}
+let legalCount = 0;
+for (let i = 0; i < 16; i++) {
+  if (isLegal(!!(i & 8), !!(i & 4), !!(i & 2), !!(i & 1))) { legalCount += 1; }
+}
+
+const player = { x: 300, y: 300, vx: 150 };
+const FLAG_X = 20, FLAG_Y = 56, FLAG_H = 30;
+
+canvas.addEventListener("click", function (e) {
+  const b = canvas.getBoundingClientRect();
+  const mx = e.clientX - b.left, my = e.clientY - b.top;
+  for (let i = 0; i < FLAGS.length; i++) {
+    const y = FLAG_Y + i * FLAG_H;
+    if (mx > FLAG_X && mx < FLAG_X + 150 && my > y - 18 && my < y + 8) {
+      FLAGS[i].set(!FLAGS[i].get());
+    }
+  }
+});
+document.addEventListener("keydown", function (e) {
+  const n = Number(e.key);
+  if (n >= 1 && n <= 4) { FLAGS[n - 1].set(!FLAGS[n - 1].get()); }
+});
+
+function update(dt) {
+  /* The update logic, written exactly as somebody would write it with flags.
+     Read it and notice there is no branch for "none of the above". */
+  if (isPlaying && !isPaused) {
+    player.x += player.vx * dt;
+    if (player.x > 540 || player.x < 240) { player.vx = -player.vx; }
+  }
+}
+
+function draw() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  /* ---- the flag switches ---- */
+  ctx.font = "bold 13px system-ui, sans-serif";
+  ctx.fillStyle = "#e7ecf3";
+  ctx.fillText("THE FLAGS (click)", FLAG_X, 34);
+  for (let i = 0; i < FLAGS.length; i++) {
+    const on = FLAGS[i].get();
+    const y = FLAG_Y + i * FLAG_H;
+    ctx.fillStyle = on ? "#2b8a3e" : "#1b2130";
+    ctx.fillRect(FLAG_X, y - 18, 150, 26);
+    ctx.strokeStyle = "#2b3240";
+    ctx.lineWidth = 1;
+    ctx.strokeRect(FLAG_X, y - 18, 150, 26);
+    ctx.fillStyle = on ? "#ffffff" : "#8793a4";
+    ctx.font = "12.5px ui-monospace, Menlo, monospace";
+    ctx.fillText((on ? "[x] " : "[ ] ") + FLAGS[i].name, FLAG_X + 8, y);
+  }
+
+  /* ---- the 16-row table ---- */
+  const TX = 200, TY = 56;
+  ctx.font = "bold 13px system-ui, sans-serif";
+  ctx.fillStyle = "#e7ecf3";
+  ctx.fillText("ALL 2^4 = 16 COMBINATIONS", TX, 34);
+  ctx.font = "11.5px ui-monospace, Menlo, monospace";
+  const current = (inMenu ? 8 : 0) + (isPlaying ? 4 : 0) + (isPaused ? 2 : 0) + (isGameOver ? 1 : 0);
+  for (let i = 0; i < 16; i++) {
+    const menu = !!(i & 8), playing = !!(i & 4), paused = !!(i & 2), over = !!(i & 1);
+    const legal = isLegal(menu, playing, paused, over);
+    const y = TY + i * 24;
+    if (i === current) {
+      ctx.fillStyle = legal ? "#1d3a24" : "#3a1d1d";
+      ctx.fillRect(TX - 4, y - 16, 300, 22);
+      ctx.strokeStyle = legal ? "#51cf66" : "#ff6b6b";
+      ctx.lineWidth = 1.5;
+      ctx.strokeRect(TX - 4, y - 16, 300, 22);
+    }
+    ctx.fillStyle = legal ? "#51cf66" : "#6b7480";
+    ctx.fillText((menu ? "1" : "0") + (playing ? "1" : "0") +
+                 (paused ? "1" : "0") + (over ? "1" : "0") +
+                 "   " + (legal ? "legal" : "nobody meant this"), TX, y);
+  }
+
+  /* ---- what the flags produce ---- */
+  const GX = 520, GY = 56, GW = 160, GH = 300;
+  ctx.fillStyle = "#0e1319";
+  ctx.fillRect(GX, GY, GW, GH);
+  ctx.strokeStyle = "#2b3240";
+  ctx.strokeRect(GX, GY, GW, GH);
+  ctx.font = "bold 13px system-ui, sans-serif";
+  ctx.fillStyle = "#e7ecf3";
+  ctx.fillText("THE GAME", GX, 34);
+
+  /* The draw logic, also written exactly as somebody would write it. */
+  ctx.font = "13px system-ui, sans-serif";
+  if (inMenu) {
+    ctx.fillStyle = "#4dabf7";
+    ctx.fillText("TITLE SCREEN", GX + 30, GY + 40);
+  }
+  if (isPlaying) {
+    ctx.fillStyle = "#51cf66";
+    ctx.fillRect(GX + 20 + ((player.x - 240) / 300) * 100, GY + 120, 18, 24);
+    ctx.fillStyle = "#8793a4";
+    ctx.fillText("playing", GX + 46, GY + 90);
+  }
+  if (isPaused) {
+    ctx.fillStyle = "rgba(0,0,0,0.6)";
+    ctx.fillRect(GX, GY, GW, GH);
+    ctx.fillStyle = "#ffd43b";
+    ctx.fillText("PAUSED", GX + 52, GY + 170);
+  }
+  if (isGameOver) {
+    ctx.fillStyle = "#ff6b6b";
+    ctx.fillText("GAME OVER", GX + 40, GY + 220);
+  }
+
+  const anyFlag = inMenu || isPlaying || isPaused || isGameOver;
+  if (!anyFlag) {
+    ctx.fillStyle = "#ff6b6b";
+    ctx.font = "bold 13px system-ui, sans-serif";
+    ctx.fillText("nothing at all", GX + 30, GY + 150);
+  }
+
+  /* ---- the count ---- */
+  ctx.font = "13px system-ui, sans-serif";
+  ctx.fillStyle = "#8793a4";
+  ctx.fillText(legalCount + " of 16 combinations mean anything. The other " +
+               (16 - legalCount) + " are states your", 20, 420);
+  ctx.fillText("program can reach and nobody has thought about.", 20, 438);
+  if (!anyFlag) {
+    ctx.fillStyle = "#ff6b6b";
+    ctx.font = "bold 13.5px system-ui, sans-serif";
+    ctx.fillText("All four false: the game draws nothing, responds to nothing, " +
+                 "and reports no error.", 20, 458);
+  } else {
+    ctx.fillStyle = "#6b7480";
+    ctx.fillText("One variable holding one of four values has nowhere to put the other twelve.",
+                 20, 458);
+  }
+}
+
+let lastTime = 0;
+function frame(now) {
+  let dt = (now - lastTime) / 1000;
+  lastTime = now;
+  if (dt > 0.05) { dt = 0.05; }
+  update(dt);
+  draw();
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

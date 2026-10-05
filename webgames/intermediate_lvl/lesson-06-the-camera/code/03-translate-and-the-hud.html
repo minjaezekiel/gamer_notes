@@ -1,0 +1,188 @@
+<!doctype html>
+<!-- ===========================================================================
+     03-translate-and-the-hud.html — apply the camera ONCE, and the one rule
+     that comes with it.
+
+     WHAT THIS DEMONSTRATES
+       * ctx.save / translate / restore applies the camera to everything at once,
+         so every draw call can use world coordinates
+       * ANYTHING DRAWN INSIDE THE TRANSFORM SCROLLS. Anything outside does not.
+         That is exactly the split you want between the world and the interface.
+       * what a fractional camera does to tile seams
+
+     HOW TO RUN IT
+     Double-click. Arrow keys.
+       H  draw the HUD inside the transform (the bug)
+       T  switch between translate-once and subtract-per-thing
+       R  stop rounding the camera, then scroll slowly and look at the tile joins
+
+     WHAT TO CHANGE FIRST
+     Press H and walk right. The score leaves with the scenery. That single mistake
+     is how most people learn what the transform actually covers.
+     ======================================================================== -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>translate, and the HUD</title>
+<style>
+  body { background: #11151c; color: #e7ecf3; font-family: system-ui, sans-serif;
+         display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 16px; }
+  canvas { background: #0a0d12; border: 2px solid #2b3240; border-radius: 6px; }
+  p { max-width: 650px; font-size: 14.5px; line-height: 1.5; color: #a9b4c4; }
+  b { color: #ffd43b; }
+</style>
+</head>
+<body>
+<h1>Inside the transform, or outside it</h1>
+<canvas id="game" width="660" height="400"></canvas>
+<p>Arrow keys &middot; <b>H</b> draw the HUD inside the transform &middot;
+   <b>T</b> translate-once / subtract-per-thing &middot; <b>R</b> stop rounding the camera.</p>
+
+<script>
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+
+const TILE = 28;
+const WORLD_COLS = 90, WORLD_ROWS = 12;
+const WORLD_W = WORLD_COLS * TILE;
+
+/* a tile world, generated so there is plenty to scroll past */
+const map = [];
+for (let row = 0; row < WORLD_ROWS; row++) {
+  const line = [];
+  for (let col = 0; col < WORLD_COLS; col++) {
+    let v = 0;
+    if (row >= WORLD_ROWS - 2) { v = 1; }
+    if ((col * 5 + row * 3) % 43 === 0 && row < WORLD_ROWS - 2) { v = 2; }
+    if (col === 0 || col === WORLD_COLS - 1) { v = 1; }
+    line.push(v);
+  }
+  map.push(line);
+}
+const TILE_COLOURS = [null, "#3c4756", "#2b5f3c"];
+
+const player = { x: 300, y: (WORLD_ROWS - 4) * TILE, w: 22, h: 30, speed: 290 };
+const camera = { x: 0, y: 0 };
+let score = 0;
+
+let hudInside = false;
+let translateOnce = true;
+let roundCamera = true;
+
+const keys = {};
+document.addEventListener("keydown", function (e) {
+  keys[e.key] = true;
+  if (e.key.startsWith("Arrow")) { e.preventDefault(); }
+  if (e.key === "h" || e.key === "H") { hudInside = !hudInside; }
+  if (e.key === "t" || e.key === "T") { translateOnce = !translateOnce; }
+  if (e.key === "r" || e.key === "R") { roundCamera = !roundCamera; }
+});
+document.addEventListener("keyup", function (e) { keys[e.key] = false; });
+
+function update(dt) {
+  if (keys["ArrowRight"]) { player.x += player.speed * dt; score += dt * 6; }
+  if (keys["ArrowLeft"])  { player.x -= player.speed * dt; }
+  player.x = Math.max(TILE, Math.min(WORLD_W - TILE - player.w, player.x));
+
+  const wanted = player.x + player.w / 2 - canvas.width / 2;
+  const t = 1 - Math.exp(-7 * dt);
+  camera.x = camera.x + (wanted - camera.x) * t;
+  camera.x = Math.max(0, Math.min(WORLD_W - canvas.width, camera.x));
+  /* A deliberately slow crawl at one point in the level, so the rounding demo has
+     something to show. Scrolling fast hides sub-pixel seams. */
+}
+
+/* Everything in here is drawn in WORLD coordinates. It does not know whether a
+   transform is in effect or not - which is the point. */
+function drawWorld(offsetX) {
+  for (let row = 0; row < WORLD_ROWS; row++) {
+    for (let col = 0; col < WORLD_COLS; col++) {
+      const v = map[row][col];
+      if (v === 0) { continue; }
+      const wx = col * TILE - offsetX;
+      if (wx < -TILE || wx > canvas.width + TILE) { continue; }
+      ctx.fillStyle = TILE_COLOURS[v];
+      ctx.fillRect(wx, row * TILE, TILE, TILE);
+    }
+  }
+  ctx.fillStyle = "#4dabf7";
+  ctx.fillRect(player.x - offsetX, player.y, player.w, player.h);
+}
+
+function drawHud() {
+  ctx.fillStyle = "rgba(10,13,18,0.9)";
+  ctx.fillRect(10, 10, 210, 104);
+  ctx.strokeStyle = hudInside ? "#ff6b6b" : "#51cf66";
+  ctx.lineWidth = 1.5;
+  ctx.strokeRect(10, 10, 210, 104);
+
+  ctx.font = "bold 16px system-ui, sans-serif";
+  ctx.fillStyle = "#e7ecf3";
+  ctx.fillText("SCORE " + Math.floor(score), 22, 34);
+
+  ctx.font = "12px ui-monospace, Menlo, monospace";
+  ctx.fillStyle = hudInside ? "#ff6b6b" : "#51cf66";
+  ctx.fillText(hudInside ? "HUD: INSIDE (bug)" : "HUD: outside (right)", 22, 56);
+  ctx.fillStyle = "#8793a4";
+  ctx.fillText(translateOnce ? "camera: translate once" : "camera: subtract each", 22, 74);
+  ctx.fillStyle = roundCamera ? "#8793a4" : "#f08c00";
+  ctx.fillText(roundCamera ? "camera: rounded" : "camera: NOT rounded", 22, 92);
+  ctx.fillStyle = "#6b7480";
+  ctx.fillText("camera x " + camera.x.toFixed(2), 22, 110);
+}
+
+function draw() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = "#101722";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  const camX = roundCamera ? Math.round(camera.x) : camera.x;
+
+  if (translateOnce) {
+    /* ---- ONE transform for the whole world ---- */
+    ctx.save();
+    ctx.translate(-camX, 0);
+    drawWorld(0);                 // world coordinates, untouched
+    if (hudInside) { drawHud(); } // ...and this is why that is a trap
+    ctx.restore();
+  } else {
+    /* ---- the same thing, subtracting in every draw call ---- */
+    drawWorld(camX);
+    if (hudInside) {
+      ctx.save();
+      ctx.translate(-camX, 0);
+      drawHud();
+      ctx.restore();
+    }
+  }
+
+  /* OUTSIDE the transform: screen coordinates, so it never moves. */
+  if (!hudInside) { drawHud(); }
+
+  if (!roundCamera) {
+    ctx.font = "12.5px system-ui, sans-serif";
+    ctx.fillStyle = "#f08c00";
+    ctx.fillText("walk slowly and look at the joins between tiles: hairline gaps that shimmer",
+                 14, canvas.height - 14);
+  }
+  if (hudInside) {
+    ctx.font = "bold 13.5px system-ui, sans-serif";
+    ctx.fillStyle = "#ff6b6b";
+    ctx.fillText("the score is part of the world now — walk right and it leaves",
+                 250, canvas.height - 14);
+  }
+}
+
+let lastTime = 0;
+function frame(now) {
+  let dt = (now - lastTime) / 1000;
+  lastTime = now;
+  if (dt > 0.05) { dt = 0.05; }
+  update(dt);
+  draw();
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

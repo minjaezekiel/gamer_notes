@@ -1,0 +1,231 @@
+<!doctype html>
+<!-- ===========================================================================
+     02-follow-and-deadzone.html — the three improvements, each on a switch.
+
+     WHAT THIS DEMONSTRATES
+       1  DEAD ZONE    the camera refuses to move for small movements
+       2  SMOOTHING    it eases towards the target instead of snapping
+       3  LOOK-AHEAD   it leans in the direction you are travelling
+     and the clamp that stops you seeing outside the level - applied AFTER the
+     smoothing, which is the detail that stops it juddering at the edges.
+
+     HOW TO RUN IT
+     Double-click. Arrow keys.
+       D  dead zone      S  smoothing      L  look-ahead      C  clamp
+       N  make the world narrower than the screen
+
+     WHAT TO CHANGE FIRST
+     Turn everything off, take three small steps, then turn the dead zone on and do
+     it again. That comparison is the whole lesson. Then press N.
+     ======================================================================== -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Follow, dead zone, look-ahead</title>
+<style>
+  body { background: #11151c; color: #e7ecf3; font-family: system-ui, sans-serif;
+         display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 16px; }
+  canvas { background: #0a0d12; border: 2px solid #2b3240; border-radius: 6px; }
+  #panel { display: grid; grid-template-columns: 170px 200px 70px; gap: 5px 12px;
+           align-items: center; font-size: 13.5px; color: #a9b4c4; }
+  #panel output { font-family: ui-monospace, Menlo, monospace; color: #ffd43b; }
+  p { max-width: 640px; font-size: 14.5px; line-height: 1.5; color: #a9b4c4; }
+  b { color: #ffd43b; }
+</style>
+</head>
+<body>
+<h1>Three improvements</h1>
+<canvas id="game" width="660" height="400"></canvas>
+<div id="panel">
+  <span>dead zone (px)</span>
+  <input id="dead" type="range" min="0" max="500" step="10" value="140">
+  <output id="deadOut">140</output>
+  <span>smoothing (per second)</span>
+  <input id="smooth" type="range" min="1" max="40" step="0.5" value="7">
+  <output id="smoothOut">7</output>
+  <span>look-ahead (seconds)</span>
+  <input id="look" type="range" min="0" max="1" step="0.05" value="0.25">
+  <output id="lookOut">0.25</output>
+</div>
+<p>Arrow keys &middot; <b>D</b> dead zone &middot; <b>S</b> smoothing &middot;
+   <b>L</b> look-ahead &middot; <b>C</b> clamp &middot; <b>N</b> narrow world.</p>
+
+<script>
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+
+const GROUND_Y = 300;
+let WORLD_W = canvas.width * 4;
+
+const blocks = [];
+for (let i = 0; i < 90; i++) {
+  blocks.push({ x: 60 + i * 30, y: GROUND_Y - 18 - ((i * 53) % 6) * 20, w: 26, h: 18 });
+}
+
+const player = { x: 300, y: GROUND_Y - 30, w: 22, h: 30, vx: 0, speed: 300 };
+const camera = { x: 0 };
+
+let useDead = true, useSmooth = true, useLook = true, useClamp = true, narrow = false;
+
+const ui = {
+  dead: document.getElementById("dead"),
+  smooth: document.getElementById("smooth"),
+  look: document.getElementById("look")
+};
+const outs = {
+  dead: document.getElementById("deadOut"),
+  smooth: document.getElementById("smoothOut"),
+  look: document.getElementById("lookOut")
+};
+Object.keys(ui).forEach(function (k) {
+  ui[k].addEventListener("input", function () { outs[k].textContent = ui[k].value; });
+});
+
+const keys = {};
+document.addEventListener("keydown", function (e) {
+  keys[e.key] = true;
+  if (e.key.startsWith("Arrow")) { e.preventDefault(); }
+  if (e.key === "d" || e.key === "D") { useDead = !useDead; }
+  if (e.key === "s" || e.key === "S") { useSmooth = !useSmooth; }
+  if (e.key === "l" || e.key === "L") { useLook = !useLook; }
+  if (e.key === "c" || e.key === "C") { useClamp = !useClamp; }
+  if (e.key === "n" || e.key === "N") {
+    narrow = !narrow;
+    WORLD_W = narrow ? 300 : canvas.width * 4;
+    player.x = Math.min(player.x, WORLD_W - player.w);
+  }
+});
+document.addEventListener("keyup", function (e) { keys[e.key] = false; });
+
+function update(dt) {
+  const DEAD = Number(ui.dead.value);
+  const SMOOTH = Number(ui.smooth.value);
+  const LOOK = Number(ui.look.value);
+
+  player.vx = 0;
+  if (keys["ArrowRight"]) { player.vx = player.speed; }
+  if (keys["ArrowLeft"])  { player.vx = -player.speed; }
+  player.x += player.vx * dt;
+  player.x = Math.max(0, Math.min(WORLD_W - player.w, player.x));
+
+  /* ---- 3. LOOK-AHEAD: aim at where they WILL be, not where they are ---- */
+  const lead = useLook ? player.vx * LOOK : 0;
+  const wanted = player.x + player.w / 2 + lead - canvas.width / 2;
+
+  /* ---- 1. DEAD ZONE: ignore the part of the gap that is inside it ---- */
+  let target = wanted;
+  if (useDead) {
+    const gap = wanted - camera.x;
+    if (Math.abs(gap) > DEAD / 2) {
+      target = camera.x + (gap > 0 ? gap - DEAD / 2 : gap + DEAD / 2);
+    } else {
+      target = camera.x;                 // inside the dead zone: do nothing at all
+    }
+  }
+
+  /* ---- 2. SMOOTHING: move a share of the way there, per SECOND ----
+     1 - exp(-k*dt) is the frame-rate-safe version of "a fraction each frame".
+     The naive `* 0.1` is lesson 3's bug wearing a different hat. */
+  if (useSmooth) {
+    const t = 1 - Math.exp(-SMOOTH * dt);
+    camera.x = camera.x + (target - camera.x) * t;
+  } else {
+    camera.x = target;
+  }
+
+  /* ---- THE CLAMP, LAST. Before the smoothing it judders; after it, it sits
+         still. And the narrow-world case is handled on purpose. ---- */
+  if (useClamp) {
+    if (WORLD_W <= canvas.width) {
+      camera.x = (WORLD_W - canvas.width) / 2;       // centre a small level
+    } else {
+      camera.x = Math.max(0, Math.min(WORLD_W - canvas.width, camera.x));
+    }
+  }
+}
+
+function draw() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  const camX = Math.round(camera.x);
+
+  ctx.fillStyle = "#101722";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  ctx.fillStyle = "#1a2230";
+  ctx.fillRect(0 - camX, GROUND_Y, WORLD_W, canvas.height - GROUND_Y);
+  /* the end of the world, so the clamp has something visible to protect */
+  ctx.fillStyle = "#3a2430";
+  ctx.fillRect(WORLD_W - camX, 0, 400, canvas.height);
+  ctx.fillRect(-400 - camX, 0, 400, canvas.height);
+
+  for (let i = 0; i < blocks.length; i++) {
+    const sx = blocks[i].x - camX;
+    if (sx < -40 || sx > canvas.width) { continue; }
+    if (blocks[i].x > WORLD_W) { continue; }
+    ctx.fillStyle = "#2b3443";
+    ctx.fillRect(sx, blocks[i].y, blocks[i].w, blocks[i].h);
+  }
+
+  ctx.fillStyle = "#4dabf7";
+  ctx.fillRect(Math.round(player.x - camX), player.y, player.w, player.h);
+
+  /* the dead zone, drawn where it lives: around the centre of the SCREEN */
+  const DEAD = Number(ui.dead.value);
+  if (useDead && DEAD > 0) {
+    const mid = canvas.width / 2;
+    ctx.strokeStyle = "#f08c00";
+    ctx.setLineDash([5, 5]);
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(mid - DEAD / 2, 0); ctx.lineTo(mid - DEAD / 2, GROUND_Y);
+    ctx.moveTo(mid + DEAD / 2, 0); ctx.lineTo(mid + DEAD / 2, GROUND_Y);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = "#f08c00";
+    ctx.font = "11px system-ui, sans-serif";
+    ctx.fillText("dead zone", mid - 28, 16);
+  }
+
+  /* ---- the switch board ---- */
+  ctx.fillStyle = "rgba(10,13,18,0.88)";
+  ctx.fillRect(10, 10, 232, 128);
+  ctx.strokeStyle = "#2b3240";
+  ctx.lineWidth = 1;
+  ctx.strokeRect(10, 10, 232, 128);
+
+  const switches = [
+    ["D  dead zone", useDead],
+    ["S  smoothing", useSmooth],
+    ["L  look-ahead", useLook],
+    ["C  clamp", useClamp],
+    ["N  narrow world", narrow]
+  ];
+  ctx.font = "12.5px ui-monospace, Menlo, monospace";
+  for (let i = 0; i < switches.length; i++) {
+    ctx.fillStyle = switches[i][1] ? "#51cf66" : "#6b7480";
+    ctx.fillText((switches[i][1] ? "[x] " : "[ ] ") + switches[i][0], 22, 32 + i * 20);
+  }
+  ctx.fillStyle = "#8793a4";
+  ctx.fillText("camera " + Math.round(camera.x) + "   world " + WORLD_W, 22, 132);
+
+  if (!useDead && !useSmooth) {
+    ctx.font = "bold 13.5px system-ui, sans-serif";
+    ctx.fillStyle = "#ff6b6b";
+    ctx.fillText("camera = player: every small step moves the whole world",
+                 260, canvas.height - 14);
+  }
+}
+
+let lastTime = 0;
+function frame(now) {
+  let dt = (now - lastTime) / 1000;
+  lastTime = now;
+  if (dt > 0.05) { dt = 0.05; }
+  update(dt);
+  draw();
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

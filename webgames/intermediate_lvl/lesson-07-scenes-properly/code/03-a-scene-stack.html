@@ -1,0 +1,305 @@
+<!doctype html>
+<!-- ===========================================================================
+     03-a-scene-stack.html — two loops are the whole pause feature.
+
+                update the TOP scene      -> the game below is frozen
+                draw ALL the scenes       -> the game below is still visible
+
+     WHAT THIS DEMONSTRATES
+       * push / pop / go, with the live stack drawn on screen
+       * pause as a six-line scene that does not know what it is covering
+       * settings pushed on top of pause, three deep, with the game still there
+       * two switches that break each loop, so you can see both halves fail
+
+     HOW TO RUN IT
+     Double-click. Space starts, arrow keys move.
+       P  pause / unpause        O  open settings (while paused)
+       U  update EVERY scene (bug)      D  draw only the TOP scene (bug)
+
+     WHAT TO CHANGE FIRST
+     Pause, then press U: the game carries on behind the menu. Press U again, then
+     press D: the game vanishes. Most people's first pause screen has one of those
+     two bugs.
+     ======================================================================== -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>A scene stack</title>
+<style>
+  body { background: #11151c; color: #e7ecf3; font-family: system-ui, sans-serif;
+         display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 16px; }
+  canvas { background: #0a0d12; border: 2px solid #2b3240; border-radius: 6px; }
+  p { max-width: 650px; font-size: 14.5px; line-height: 1.5; color: #a9b4c4; }
+  b { color: #ffd43b; }
+</style>
+</head>
+<body>
+<h1>Update the top, draw them all</h1>
+<canvas id="game" width="680" height="430"></canvas>
+<p><b>Space</b> start &middot; arrows move &middot; <b>P</b> pause &middot;
+   <b>O</b> settings &middot; <b>U</b> update-everything bug &middot;
+   <b>D</b> draw-top-only bug.</p>
+
+<script>
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+
+const Input = {
+  keys: {}, previous: {},
+  start: function () {
+    document.addEventListener("keydown", function (e) {
+      Input.keys[e.key] = true;
+      if (e.key.startsWith("Arrow") || e.key === " ") { e.preventDefault(); }
+    });
+    document.addEventListener("keyup", function (e) { Input.keys[e.key] = false; });
+  },
+  isDown: function (k) { return !!this.keys[k]; },
+  wasPressed: function (k) { return !!this.keys[k] && !this.previous[k]; },
+  endFrame: function () { this.previous = Object.assign({}, this.keys); }
+};
+
+let bugUpdateAll = false;
+let bugDrawTopOnly = false;
+
+/* ---------------------------------------------------------------------------
+   THE SCENE STACK
+   ------------------------------------------------------------------------ */
+const Scenes = {
+  stack: [],
+
+  get current() { return this.stack[this.stack.length - 1]; },
+
+  go: function (scene) {                 // replace everything
+    while (this.stack.length > 0) { this.stack.pop().exit(); }
+    this.push(scene);
+  },
+
+  push: function (scene) {               // on top, keeping what is below
+    this.stack.push(scene);
+    scene.enter();
+  },
+
+  pop: function () {                     // reveal what was underneath
+    if (this.stack.length > 1) { this.stack.pop().exit(); }
+  },
+
+  update: function (dt) {
+    if (bugUpdateAll) {
+      /* THE BUG: everything updates, so "paused" pauses nothing. */
+      for (let i = 0; i < this.stack.length; i++) { this.stack[i].update(dt); }
+      return;
+    }
+    /* ONLY THE TOP. This single line is what "paused" means. */
+    this.current.update(dt);
+  },
+
+  draw: function (ctx) {
+    if (bugDrawTopOnly) {
+      /* THE OTHER BUG: only the top draws, so the game disappears. */
+      this.current.draw(ctx);
+      return;
+    }
+    /* ALL OF THEM, bottom to top. The frozen game is still on screen. */
+    for (let i = 0; i < this.stack.length; i++) { this.stack[i].draw(ctx); }
+  },
+
+  names: function () {
+    return this.stack.map(function (s) { return s.name; });
+  }
+};
+
+/* ---------------------------------------------------------------------------
+   TITLE
+   ------------------------------------------------------------------------ */
+const titleScene = {
+  name: "title",
+  enter: function () { this.blink = 0; },
+  update: function (dt) {
+    this.blink += dt;
+    if (Input.wasPressed(" ")) { Scenes.go(playScene); }
+  },
+  draw: function (ctx) {
+    ctx.fillStyle = "#101722";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.textAlign = "center";
+    ctx.font = "bold 34px system-ui, sans-serif";
+    ctx.fillStyle = "#e7ecf3";
+    ctx.fillText("STACKED", canvas.width / 2, 170);
+    if (this.blink % 1 < 0.6) {
+      ctx.font = "16px system-ui, sans-serif";
+      ctx.fillStyle = "#4dabf7";
+      ctx.fillText("press SPACE", canvas.width / 2, 215);
+    }
+    ctx.textAlign = "left";
+  },
+  exit: function () {}
+};
+
+/* ---------------------------------------------------------------------------
+   PLAY — it does not know that pausing exists
+   ------------------------------------------------------------------------ */
+const playScene = {
+  name: "play",
+  enter: function () {
+    this.player = { x: 340, y: 230, speed: 280 };
+    this.movers = [];
+    for (let i = 0; i < 7; i++) {
+      this.movers.push({
+        x: 70 + i * 85, y: 90 + (i % 3) * 90,
+        vx: (i % 2 ? 1 : -1) * (70 + i * 14), r: 10 + (i % 3) * 3
+      });
+    }
+    this.time = 0;
+  },
+  update: function (dt) {
+    this.time += dt;
+    if (Input.isDown("ArrowLeft"))  { this.player.x -= this.player.speed * dt; }
+    if (Input.isDown("ArrowRight")) { this.player.x += this.player.speed * dt; }
+    if (Input.isDown("ArrowUp"))    { this.player.y -= this.player.speed * dt; }
+    if (Input.isDown("ArrowDown"))  { this.player.y += this.player.speed * dt; }
+    this.player.x = Math.max(14, Math.min(canvas.width - 14, this.player.x));
+    this.player.y = Math.max(14, Math.min(canvas.height - 14, this.player.y));
+
+    for (let i = 0; i < this.movers.length; i++) {
+      const m = this.movers[i];
+      m.x += m.vx * dt;
+      if (m.x < 20 || m.x > canvas.width - 20) { m.vx = -m.vx; }
+    }
+
+    /* The play scene PUSHES the pause scene. It does not switch to it, so it
+       stays on the stack and keeps being drawn. */
+    if (Input.wasPressed("p")) { Scenes.push(pauseScene); }
+  },
+  draw: function (ctx) {
+    ctx.fillStyle = "#0f141b";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    for (let i = 0; i < this.movers.length; i++) {
+      const m = this.movers[i];
+      ctx.fillStyle = "#2f6fed";
+      ctx.beginPath();
+      ctx.arc(m.x, m.y, m.r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.fillStyle = "#ffd43b";
+    ctx.beginPath();
+    ctx.arc(this.player.x, this.player.y, 13, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.font = "12px ui-monospace, Menlo, monospace";
+    ctx.fillStyle = "#6b7480";
+    ctx.fillText("game time " + this.time.toFixed(2) + "  (frozen while paused)", 14, 26);
+  },
+  exit: function () {}
+};
+
+/* ---------------------------------------------------------------------------
+   PAUSE — six lines of substance, and it knows nothing about the game
+   ------------------------------------------------------------------------ */
+const pauseScene = {
+  name: "pause",
+  enter: function () {},
+  update: function () {
+    if (Input.wasPressed("p")) { Scenes.pop(); }
+    if (Input.wasPressed("o")) { Scenes.push(settingsScene); }
+  },
+  draw: function (ctx) {
+    ctx.fillStyle = "rgba(6, 9, 14, 0.66)";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.textAlign = "center";
+    ctx.font = "bold 30px system-ui, sans-serif";
+    ctx.fillStyle = "#ffd43b";
+    ctx.fillText("PAUSED", canvas.width / 2, 190);
+    ctx.font = "14px system-ui, sans-serif";
+    ctx.fillStyle = "#a9b4c4";
+    ctx.fillText("P to continue      O for settings", canvas.width / 2, 225);
+    ctx.textAlign = "left";
+  },
+  exit: function () {}
+};
+
+/* ---------------------------------------------------------------------------
+   SETTINGS — pushed on top of pause. Three deep, and nothing special needed.
+   ------------------------------------------------------------------------ */
+const settingsScene = {
+  name: "settings",
+  enter: function () { this.volume = 7; },
+  update: function () {
+    if (Input.wasPressed("ArrowUp"))   { this.volume = Math.min(10, this.volume + 1); }
+    if (Input.wasPressed("ArrowDown")) { this.volume = Math.max(0, this.volume - 1); }
+    if (Input.wasPressed("o") || Input.wasPressed("Escape")) { Scenes.pop(); }
+  },
+  draw: function (ctx) {
+    const w = 320, h = 150, x = (canvas.width - w) / 2, y = 150;
+    ctx.fillStyle = "#121a26";
+    ctx.fillRect(x, y, w, h);
+    ctx.strokeStyle = "#4dabf7";
+    ctx.lineWidth = 2;
+    ctx.strokeRect(x, y, w, h);
+    ctx.textAlign = "center";
+    ctx.font = "bold 19px system-ui, sans-serif";
+    ctx.fillStyle = "#e7ecf3";
+    ctx.fillText("SETTINGS", canvas.width / 2, y + 32);
+    ctx.font = "15px ui-monospace, Menlo, monospace";
+    ctx.fillStyle = "#ffd43b";
+    ctx.fillText("volume  " + "#".repeat(this.volume) + ".".repeat(10 - this.volume),
+                 canvas.width / 2, y + 74);
+    ctx.font = "13px system-ui, sans-serif";
+    ctx.fillStyle = "#8793a4";
+    ctx.fillText("up / down to change", canvas.width / 2, y + 104);
+    ctx.fillText("O or Escape to go back", canvas.width / 2, y + 126);
+    ctx.textAlign = "left";
+  },
+  exit: function () {}
+};
+
+document.addEventListener("keydown", function (e) {
+  if (e.key === "u" || e.key === "U") { bugUpdateAll = !bugUpdateAll; }
+  if (e.key === "d" || e.key === "D") { bugDrawTopOnly = !bugDrawTopOnly; }
+});
+
+/* The stack, drawn. The best debugging aid in this lesson. */
+function drawStack() {
+  const names = Scenes.names();
+  const x = canvas.width - 150, y = canvas.height - 18;
+  ctx.font = "bold 11.5px system-ui, sans-serif";
+  ctx.fillStyle = "#6b7480";
+  ctx.fillText("STACK (top last)", x, y - names.length * 18 - 8);
+  for (let i = 0; i < names.length; i++) {
+    const top = i === names.length - 1;
+    ctx.font = "12px ui-monospace, Menlo, monospace";
+    ctx.fillStyle = top ? "#51cf66" : "#4a5362";
+    ctx.fillText((top ? "> " : "  ") + names[i] + (top ? "   (updates)" : "   (drawn only)"),
+                 x, y - (names.length - 1 - i) * 18);
+  }
+
+  if (bugUpdateAll) {
+    ctx.font = "bold 13px system-ui, sans-serif";
+    ctx.fillStyle = "#ff6b6b";
+    ctx.fillText("U: every scene updates — pause pauses nothing", 14, canvas.height - 32);
+  }
+  if (bugDrawTopOnly) {
+    ctx.font = "bold 13px system-ui, sans-serif";
+    ctx.fillStyle = "#ff6b6b";
+    ctx.fillText("D: only the top scene draws — the game is gone", 14, canvas.height - 14);
+  }
+}
+
+Input.start();
+Scenes.go(titleScene);
+
+let lastTime = 0;
+function frame(now) {
+  let dt = (now - lastTime) / 1000;
+  lastTime = now;
+  if (dt > 0.05) { dt = 0.05; }
+
+  Scenes.update(dt);
+  Scenes.draw(ctx);
+
+  drawStack();
+  Input.endFrame();
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

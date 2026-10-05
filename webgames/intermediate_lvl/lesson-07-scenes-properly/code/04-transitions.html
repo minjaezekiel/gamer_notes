@@ -1,0 +1,311 @@
+<!doctype html>
+<!-- ===========================================================================
+     04-transitions.html — a fade is a scene with a timer and a rectangle.
+
+     WHAT THIS DEMONSTRATES
+       * a transition is not special machinery: it is one scene pushed on top,
+         which draws a growing black rectangle while the scene below carries on
+         being drawn
+       * easing makes a visible difference for no extra work (compare linear with
+         easeOutQuad and easeInOutQuad)
+       * the "changed scene halfway through update" bug, on a switch, with the
+         deferred fix next to it
+
+     HOW TO RUN IT
+     Double-click.
+       Space   start / restart          1 2 3  linear / easeOut / easeInOut
+       M       change scene mid-update without returning (the bug)
+       F       deferred scene change (the fix)
+
+     WHAT TO CHANGE FIRST
+     Press M and then die. Watch the error counter go up, and watch one frame of
+     the old scene flash. Then press F and do it again.
+     ======================================================================== -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Transitions</title>
+<style>
+  body { background: #11151c; color: #e7ecf3; font-family: system-ui, sans-serif;
+         display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 16px; }
+  canvas { background: #0a0d12; border: 2px solid #2b3240; border-radius: 6px; }
+  p { max-width: 650px; font-size: 14.5px; line-height: 1.5; color: #a9b4c4; }
+  b { color: #ffd43b; }
+</style>
+</head>
+<body>
+<h1>Fades</h1>
+<canvas id="game" width="660" height="420"></canvas>
+<p><b>Space</b> start &middot; arrows move &middot; <b>1 2 3</b> easing curve &middot;
+   <b>M</b> the mid-update bug &middot; <b>F</b> the deferred fix.
+   Touch the red circle to die.</p>
+
+<script>
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+
+const Input = {
+  keys: {}, previous: {},
+  start: function () {
+    document.addEventListener("keydown", function (e) {
+      Input.keys[e.key] = true;
+      if (e.key.startsWith("Arrow") || e.key === " ") { e.preventDefault(); }
+    });
+    document.addEventListener("keyup", function (e) { Input.keys[e.key] = false; });
+  },
+  isDown: function (k) { return !!this.keys[k]; },
+  wasPressed: function (k) { return !!this.keys[k] && !this.previous[k]; },
+  endFrame: function () { this.previous = Object.assign({}, this.keys); }
+};
+
+/* The easing curves from the easing explainer. ease(0) = 0, ease(1) = 1 always;
+   the only difference is the shape in between. */
+const EASINGS = [
+  { name: "linear",        f: function (t) { return t; } },
+  { name: "easeOutQuad",   f: function (t) { return 1 - (1 - t) * (1 - t); } },
+  { name: "easeInOutQuad", f: function (t) {
+      return t < 0.5 ? 2 * t * t : 1 - 2 * (1 - t) * (1 - t); } }
+];
+let easing = 1;
+
+let midUpdateBug = false;
+let deferChanges = true;
+let leakErrors = 0;
+
+const Scenes = {
+  stack: [],
+  pending: null,
+  get current() { return this.stack[this.stack.length - 1]; },
+
+  go: function (scene) {
+    if (deferChanges) { this.pending = { kind: "go", scene: scene }; return; }
+    this.applyGo(scene);
+  },
+  applyGo: function (scene) {
+    while (this.stack.length > 0) { this.stack.pop().exit(); }
+    this.push(scene);
+  },
+  push: function (scene) { this.stack.push(scene); scene.enter(); },
+  pop: function () { if (this.stack.length > 1) { this.stack.pop().exit(); } },
+
+  update: function (dt) { this.current.update(dt); },
+  draw: function (c) {
+    for (let i = 0; i < this.stack.length; i++) { this.stack[i].draw(c); }
+  },
+
+  /* Applied AFTER update and draw have both finished, so nothing is walking
+     through a stack that is being rebuilt underneath it. */
+  applyPending: function () {
+    if (!this.pending) { return; }
+    const p = this.pending;
+    this.pending = null;
+    if (p.kind === "go") { this.applyGo(p.scene); }
+  },
+  names: function () { return this.stack.map(function (s) { return s.name; }); }
+};
+
+/* ---------------------------------------------------------------------------
+   THE TRANSITION. Push it on top; the scene below keeps drawing underneath.
+   ------------------------------------------------------------------------ */
+const FADE_TIME = 0.55;
+
+function makeFade(direction, nextScene) {
+  return {
+    name: "fade-" + direction,
+    enter: function () { this.t = 0; },
+    update: function (dt) {
+      this.t += dt;
+      if (this.t >= FADE_TIME) {
+        if (direction === "out") {
+          /* the fade-out finished: change scene, then fade back in */
+          Scenes.go(nextScene);
+          Scenes.pendingFadeIn = true;
+        } else {
+          Scenes.pop();
+        }
+      }
+    },
+    draw: function (c) {
+      const raw = Math.min(1, this.t / FADE_TIME);
+      const eased = EASINGS[easing].f(raw);
+      const alpha = direction === "out" ? eased : 1 - eased;
+      c.fillStyle = "rgba(0, 0, 0, " + alpha.toFixed(3) + ")";
+      c.fillRect(0, 0, canvas.width, canvas.height);
+
+      c.font = "11.5px ui-monospace, Menlo, monospace";
+      c.fillStyle = "rgba(255,212,59,0.8)";
+      c.fillText("fade " + direction + "   t=" + raw.toFixed(2) +
+                 "   alpha=" + alpha.toFixed(2) + "   " + EASINGS[easing].name, 14, 400);
+    },
+    exit: function () {}
+  };
+}
+
+const titleScene = {
+  name: "title",
+  enter: function () { this.blink = 0; },
+  update: function (dt) {
+    this.blink += dt;
+    if (Input.wasPressed(" ")) { Scenes.push(makeFade("out", playScene)); }
+  },
+  draw: function (c) {
+    c.fillStyle = "#101722";
+    c.fillRect(0, 0, canvas.width, canvas.height);
+    c.textAlign = "center";
+    c.font = "bold 32px system-ui, sans-serif";
+    c.fillStyle = "#e7ecf3";
+    c.fillText("FADE DEMO", canvas.width / 2, 170);
+    if (this.blink % 1 < 0.6) {
+      c.font = "16px system-ui, sans-serif";
+      c.fillStyle = "#4dabf7";
+      c.fillText("press SPACE", canvas.width / 2, 212);
+    }
+    c.textAlign = "left";
+  },
+  exit: function () {}
+};
+
+const playScene = {
+  name: "play",
+  enter: function () {
+    this.player = { x: 330, y: 240, speed: 290 };
+    this.hazard = { x: 120, y: 120, vx: 150, vy: 110 };
+    this.score = 0;
+  },
+  update: function (dt) {
+    this.score += dt * 10;
+    if (Input.isDown("ArrowLeft"))  { this.player.x -= this.player.speed * dt; }
+    if (Input.isDown("ArrowRight")) { this.player.x += this.player.speed * dt; }
+    if (Input.isDown("ArrowUp"))    { this.player.y -= this.player.speed * dt; }
+    if (Input.isDown("ArrowDown"))  { this.player.y += this.player.speed * dt; }
+
+    this.hazard.x += this.hazard.vx * dt;
+    this.hazard.y += this.hazard.vy * dt;
+    if (this.hazard.x < 20 || this.hazard.x > canvas.width - 20) { this.hazard.vx *= -1; }
+    if (this.hazard.y < 20 || this.hazard.y > canvas.height - 20) { this.hazard.vy *= -1; }
+
+    const hit = Math.hypot(this.hazard.x - this.player.x, this.hazard.y - this.player.y) < 26;
+    if (hit) {
+      overScene.finalScore = Math.floor(this.score);
+      Scenes.push(makeFade("out", overScene));
+
+      if (midUpdateBug) {
+        /* THE BUG: no return. The rest of this function keeps running against a
+           scene that is being replaced. With deferral off, `this.player` is gone
+           by the time the lines below touch it. */
+      } else {
+        return;
+      }
+    }
+
+    /* the lines that must not run after a scene change */
+    try {
+      this.player.x = Math.max(14, Math.min(canvas.width - 14, this.player.x));
+      this.player.y = Math.max(14, Math.min(canvas.height - 14, this.player.y));
+    } catch (err) {
+      /* Caught only so the page can COUNT the problem instead of dying. In a real
+         game this is an uncaught TypeError and the game stops. */
+      leakErrors += 1;
+    }
+  },
+  draw: function (c) {
+    c.fillStyle = "#0f141b";
+    c.fillRect(0, 0, canvas.width, canvas.height);
+    if (!this.player) { return; }
+    c.fillStyle = "#ff6b6b";
+    c.beginPath();
+    c.arc(this.hazard.x, this.hazard.y, 14, 0, Math.PI * 2);
+    c.fill();
+    c.fillStyle = "#4dabf7";
+    c.beginPath();
+    c.arc(this.player.x, this.player.y, 13, 0, Math.PI * 2);
+    c.fill();
+    c.font = "bold 15px system-ui, sans-serif";
+    c.fillStyle = "#e7ecf3";
+    c.fillText("SCORE " + Math.floor(this.score), 14, 28);
+  },
+  exit: function () {
+    /* Teardown, which is exactly what makes the mid-update bug dangerous. */
+    this.player = null;
+    this.hazard = null;
+  }
+};
+
+const overScene = {
+  name: "gameover",
+  finalScore: 0,
+  enter: function () { this.t = 0; },
+  update: function (dt) {
+    this.t += dt;
+    if (this.t > 0.5 && Input.wasPressed(" ")) { Scenes.push(makeFade("out", titleScene)); }
+  },
+  draw: function (c) {
+    c.fillStyle = "#17101a";
+    c.fillRect(0, 0, canvas.width, canvas.height);
+    c.textAlign = "center";
+    c.font = "bold 32px system-ui, sans-serif";
+    c.fillStyle = "#ff6b6b";
+    c.fillText("CAUGHT", canvas.width / 2, 165);
+    c.font = "17px system-ui, sans-serif";
+    c.fillStyle = "#e7ecf3";
+    c.fillText("score " + this.finalScore, canvas.width / 2, 205);
+    if (this.t > 0.5) {
+      c.font = "14px system-ui, sans-serif";
+      c.fillStyle = "#8793a4";
+      c.fillText("press SPACE", canvas.width / 2, 250);
+    }
+    c.textAlign = "left";
+  },
+  exit: function () {}
+};
+
+document.addEventListener("keydown", function (e) {
+  if (e.key === "1") { easing = 0; }
+  if (e.key === "2") { easing = 1; }
+  if (e.key === "3") { easing = 2; }
+  if (e.key === "m" || e.key === "M") { midUpdateBug = !midUpdateBug; }
+  if (e.key === "f" || e.key === "F") { deferChanges = !deferChanges; }
+});
+
+function drawOverlay() {
+  ctx.font = "11.5px ui-monospace, Menlo, monospace";
+  ctx.fillStyle = "#6b7480";
+  ctx.fillText("stack: " + Scenes.names().join(" > "), 14, canvas.height - 44);
+  ctx.fillStyle = deferChanges ? "#51cf66" : "#f08c00";
+  ctx.fillText("scene changes: " + (deferChanges ? "deferred (F)" : "immediate (F)"),
+               14, canvas.height - 28);
+  ctx.fillStyle = midUpdateBug ? "#ff6b6b" : "#6b7480";
+  ctx.fillText("mid-update return: " + (midUpdateBug ? "MISSING (M)" : "present (M)") +
+               "    leaked frames: " + leakErrors, 14, canvas.height - 12);
+  ctx.fillStyle = "#8793a4";
+  ctx.fillText("easing: " + EASINGS[easing].name + "  (1 2 3)", canvas.width - 230,
+               canvas.height - 12);
+}
+
+Input.start();
+Scenes.applyGo(titleScene);
+
+let lastTime = 0;
+function frame(now) {
+  let dt = (now - lastTime) / 1000;
+  lastTime = now;
+  if (dt > 0.05) { dt = 0.05; }
+
+  Scenes.update(dt);
+  Scenes.draw(ctx);
+
+  /* The deferred change is applied here, once the frame is completely finished. */
+  Scenes.applyPending();
+  if (Scenes.pendingFadeIn) {
+    Scenes.pendingFadeIn = false;
+    Scenes.push(makeFade("in", null));
+  }
+
+  drawOverlay();
+  Input.endFrame();
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
