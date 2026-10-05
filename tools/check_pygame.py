@@ -66,12 +66,17 @@ def interpreter() -> str:
 
 def pygame_available(python: str) -> tuple[bool, str]:
     try:
+        # pygame prints a banner on import. PYGAME_HIDE_SUPPORT_PROMPT silences
+        # it; taking the last line as well means an older pygame that ignores the
+        # variable still reports a clean version number.
+        env = dict(os.environ, PYGAME_HIDE_SUPPORT_PROMPT="1")
         out = subprocess.run(
             [python, "-c", "import pygame; print(pygame.version.ver)"],
-            capture_output=True, text=True, timeout=60,
+            capture_output=True, text=True, timeout=60, env=env,
         )
         if out.returncode == 0:
-            return True, out.stdout.strip()
+            lines = [l for l in out.stdout.strip().splitlines() if l.strip()]
+            return True, lines[-1] if lines else "unknown"
         return False, out.stderr.strip().splitlines()[-1] if out.stderr else "import failed"
     except Exception as err:            # noqa: BLE001 - reporting, not handling
         return False, str(err)
@@ -102,6 +107,7 @@ def run_one(python: str, path: Path, frames: int, timeout: float) -> str | None:
     env["SDL_AUDIODRIVER"] = "dummy"
     env["SELFTEST_FRAMES"] = str(frames)
     env["PYTHONDONTWRITEBYTECODE"] = "1"
+    env["PYGAME_HIDE_SUPPORT_PROMPT"] = "1"
 
     try:
         done = subprocess.run(
